@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "id": "smoke_generated_map",
+  "display_name": "Smoke Map",
+  "description": "Deterministic smoke config",
+  "meta": {
+    "author": "wdc",
+    "tags": ["smoke"],
+    "notes": ""
+  },
+  "map": {
+    "width_cells": 64,
+    "height_cells": 64,
+    "cell_size_m": 1.0,
+    "seed": {
+      "mode": "fixed",
+      "fixed_value": 424242
+    },
+    "player_spawn": {
+      "count": 2,
+      "edge_margin_cells": 6,
+      "min_distance_between_spawns_cells": 10
+    }
+  },
+  "terrain": {
+    "noise_fill_percent": 0.6,
+    "smooth_iterations": 4,
+    "global_corridors": {
+      "enabled": true,
+      "count": 8,
+      "width_cells": 3,
+      "length_factor": 0.6,
+      "wobble_chance": 0.2
+    }
+  },
+  "minerals": {
+    "global_distribution": {
+      "base_candidate_chance": 0.02,
+      "exposed_wall_candidate_chance": 0.08,
+      "min_distance_between_cluster_seeds_cells": 1,
+      "allow_clusters_inside_poi_rooms": false,
+      "allow_clusters_under_poi_corridors": false
+    },
+    "cluster_types": [
+      {
+        "id": "large_poi_mineral",
+        "enabled": true,
+        "tile_type_id": "gold_block",
+        "spawn_scope": "poi_large",
+        "weight": 1.0,
+        "min_cluster_size": 2,
+        "max_cluster_size": 3,
+        "require_stone": true,
+        "spawn_probability": 0.5
+      }
+    ],
+    "cluster_overrides": [
+      {
+        "id": "poi_large_gold_core",
+        "base_cluster_type_id": "large_poi_mineral",
+        "min_cluster_size": 3,
+        "max_cluster_size": 4,
+        "require_stone": false,
+        "spawn_probability": 0.9
+      }
+    ]
+  },
+  "poi_generation": {
+    "global": {
+      "enabled": true,
+      "placement_attempts_per_poi": 60,
+      "default_min_distance_between_pois_cells": 8,
+      "default_room_content_anchor_search_radius_cells": 2
+    },
+    "poi_types": [
+      {
+        "id": "large_gold_dungeon",
+        "enabled": true,
+        "count": 1,
+        "weight": 1.0,
+        "dedicated_mineral_id": "gold_block",
+        "placement": {
+          "footprint_padding_cells": 2,
+          "poi_attempts": 60,
+          "room_attempts": 20,
+          "min_distance_from_other_pois_cells": 8
+        },
+        "main_room": {
+          "width_min": 11,
+          "width_max": 11,
+          "height_min": 11,
+          "height_max": 11
+        },
+        "sub_rooms": {
+          "count_min": 2,
+          "count_max": 2,
+          "width_min": 5,
+          "width_max": 5,
+          "height_min": 5,
+          "height_max": 5,
+          "min_gap_from_rooms_cells": 1,
+          "placement_radius_min_cells": 5,
+          "placement_radius_max_cells": 8
+        },
+        "connectivity": {
+          "mode": "mst_plus_extra",
+          "candidate_neighbors_per_room": 3,
+          "extra_connection_chance": 0.0,
+          "max_extra_connections": 0
+        },
+        "corridor": {
+          "width_cells": 2,
+          "style": "orthogonal_l",
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1,
+          "reuse_existing_corridors": true,
+          "allow_room_reentry": true,
+          "retry_doorway_count": 4
+        },
+        "torch": {
+          "enabled": true,
+          "wall_inset_cells": 1,
+          "coverage_radius_cells": 4,
+          "max_torch_count": 8,
+          "prefer_perimeter": true
+        },
+        "trace": {
+          "enabled": true,
+          "radius_cells": 10,
+          "density_ratio": 0.9,
+          "rays": 5.0,
+          "twist": 1.0
+        },
+        "content": {
+          "center_ore_cluster": {
+            "enabled": true,
+            "cluster_override_id": "poi_large_gold_core",
+            "avoid_radius_cells": 1
+          },
+          "main_room_roll": {
+            "none_weight": 0.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [],
+            "min_distance_from_door_cells": 2
+          },
+          "sub_room_roll": {
+            "none_weight": 0.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "ghoul_nest",
+                "weight": 1.0
+              }
+            ],
+            "min_distance_from_door_cells": 2
+          }
+        }
+      }
+    ]
+  },
+  "monster_generation": {
+    "global": {
+      "enabled": true,
+      "debug_show_spawn_sites_by_default": true
+    },
+    "isolated_spawn_templates": [
+      {
+        "id": "ghoul_single",
+        "monster_id": "ghoul"
+      }
+    ],
+    "nest_templates": [
+      {
+        "id": "ghoul_nest",
+        "nest_unit_id": "ghoul_nest",
+        "monster_id": "ghoul",
+        "max_hit_points": 100,
+        "loot_table_id": "ghoul_nest_loot",
+        "activation_radius_m": 8.0,
+        "spawn_interval_sec": 6.0,
+        "max_alive_children": 2
+      }
+    ],
+    "ambient_isolated_sites": {
+      "enabled": false,
+      "attempts": 0,
+      "min_distance_from_player_spawns_cells": 0,
+      "min_distance_between_sites_cells": 0,
+      "entries": []
+    },
+    "ambient_nests": {
+      "enabled": false,
+      "attempts": 0,
+      "min_distance_from_player_spawns_cells": 0,
+      "min_distance_between_nests_cells": 0,
+      "entries": []
+    }
+  },
+  "debug": {
+    "map_view": {
+      "show_cluster_bounds": true,
+      "show_poi_graph": true,
+      "show_spawn_sites": true,
+      "show_room_labels": false,
+      "show_corridor_doors": false
+    }
+  }
+}

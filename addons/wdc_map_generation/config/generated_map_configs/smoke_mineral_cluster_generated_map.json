@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "id": "smoke_mineral_cluster_generated_map",
+  "display_name": "Smoke Mineral Cluster Map",
+  "description": "Deterministic mineral cluster smoke config",
+  "meta": {
+    "author": "wdc",
+    "tags": ["smoke", "cluster"],
+    "notes": ""
+  },
+  "map": {
+    "width_cells": 16,
+    "height_cells": 16,
+    "cell_size_m": 1.0,
+    "seed": {
+      "mode": "fixed",
+      "fixed_value": 31337
+    },
+    "player_spawn": {
+      "count": 0,
+      "edge_margin_cells": 0,
+      "min_distance_between_spawns_cells": 0
+    }
+  },
+  "terrain": {
+    "noise_fill_percent": 1.0,
+    "smooth_iterations": 0,
+    "global_corridors": {
+      "enabled": false,
+      "count": 0,
+      "width_cells": 1,
+      "length_factor": 0.0,
+      "wobble_chance": 0.0
+    }
+  },
+  "minerals": {
+    "global_distribution": {
+      "base_candidate_chance": 1.0,
+      "exposed_wall_candidate_chance": 1.0,
+      "min_distance_between_cluster_seeds_cells": 999,
+      "allow_clusters_inside_poi_rooms": false,
+      "allow_clusters_under_poi_corridors": false
+    },
+    "cluster_types": [
+      {
+        "id": "mineral_wall_cluster",
+        "enabled": true,
+        "tile_type_id": "mineral_wall",
+        "spawn_scope": "global_common",
+        "weight": 1.0,
+        "min_cluster_size": 4,
+        "max_cluster_size": 4,
+        "require_stone": true,
+        "spawn_probability": 1.0
+      }
+    ],
+    "cluster_overrides": []
+  },
+  "poi_generation": {
+    "global": {
+      "enabled": false,
+      "placement_attempts_per_poi": 0,
+      "default_min_distance_between_pois_cells": 0,
+      "default_room_content_anchor_search_radius_cells": 0
+    },
+    "poi_types": []
+  },
+  "monster_generation": {
+    "global": {
+      "enabled": false,
+      "debug_show_spawn_sites_by_default": false
+    },
+    "isolated_spawn_templates": [],
+    "nest_templates": [],
+    "ambient_isolated_sites": {
+      "enabled": false,
+      "attempts": 0,
+      "min_distance_from_player_spawns_cells": 0,
+      "min_distance_between_sites_cells": 0,
+      "entries": []
+    },
+    "ambient_nests": {
+      "enabled": false,
+      "attempts": 0,
+      "min_distance_from_player_spawns_cells": 0,
+      "min_distance_between_nests_cells": 0,
+      "entries": []
+    }
+  },
+  "debug": {
+    "map_view": {
+      "show_cluster_bounds": true,
+      "show_poi_graph": false,
+      "show_spawn_sites": false,
+      "show_room_labels": false,
+      "show_corridor_doors": false
+    }
+  }
+}

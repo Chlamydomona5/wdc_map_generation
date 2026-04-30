@@ -1,0 +1,12 @@
+; Engine configuration file.
+;
+; This project is the standalone map-generation preview workspace.
+
+config_version=5
+
+[application]
+
+config/name="wdc_map_generation"
+run/main_scene="res://addons/wdc_map_generation/preview/scenes/map_generation_preview.tscn"
+config/features=PackedStringArray("4.6")
+

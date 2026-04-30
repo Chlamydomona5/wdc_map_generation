@@ -1,0 +1,535 @@
+{
+  "debug": {
+    "map_view": {
+      "show_cluster_bounds": true,
+      "show_corridor_doors": false,
+      "show_poi_graph": true,
+      "show_room_labels": false,
+      "show_spawn_sites": true
+    }
+  },
+  "description": "Default gameplay config",
+  "display_name": "Default Map",
+  "id": "default_generated_map",
+  "map": {
+    "cell_size_m": 1.0,
+    "height_cells": 128,
+    "player_spawn": {
+      "count": 2.0,
+      "edge_margin_cells": 6.0,
+      "min_distance_between_spawns_cells": 10.0
+    },
+    "seed": {
+      "fixed_value": 0,
+      "mode": "random"
+    },
+    "width_cells": 96
+  },
+  "meta": {
+    "author": "wdc",
+    "notes": "",
+    "tags": [
+      "default"
+    ]
+  },
+  "minerals": {
+    "cluster_overrides": [
+      {
+        "base_cluster_type_id": "large_poi_mineral",
+        "id": "poi_large_gold_core",
+        "max_cluster_size": 8.0,
+        "min_cluster_size": 4.0,
+        "require_stone": false,
+        "spawn_probability": 0.65
+      },
+      {
+        "base_cluster_type_id": "medium_poi_mineral",
+        "id": "poi_medium_amethyst_core",
+        "max_cluster_size": 6.0,
+        "min_cluster_size": 3.0,
+        "require_stone": false,
+        "spawn_probability": 0.6
+      },
+      {
+        "base_cluster_type_id": "small_poi_mineral",
+        "id": "poi_small_turquoise_core",
+        "max_cluster_size": 4.0,
+        "min_cluster_size": 2.0,
+        "require_stone": false,
+        "spawn_probability": 0.55
+      }
+    ],
+    "cluster_types": [
+      {
+        "enabled": true,
+        "id": "common_mineral",
+        "max_cluster_size": 5,
+        "min_cluster_size": 2,
+        "require_stone": true,
+        "spawn_probability": 0.45,
+        "spawn_scope": "global_common",
+        "tile_type_id": "mineral_wall",
+        "weight": 1.0
+      },
+      {
+        "enabled": true,
+        "id": "rare_mineral",
+        "max_cluster_size": 3,
+        "min_cluster_size": 1,
+        "require_stone": true,
+        "spawn_probability": 0.25,
+        "spawn_scope": "global_rare",
+        "tile_type_id": "rare_mineral_wall",
+        "weight": 0.8
+      },
+      {
+        "enabled": true,
+        "id": "large_poi_mineral",
+        "max_cluster_size": 4,
+        "min_cluster_size": 1,
+        "require_stone": true,
+        "spawn_probability": 0.25,
+        "spawn_scope": "poi_large",
+        "tile_type_id": "gold_block",
+        "weight": 0.5
+      },
+      {
+        "enabled": true,
+        "id": "medium_poi_mineral",
+        "max_cluster_size": 4,
+        "min_cluster_size": 1,
+        "require_stone": true,
+        "spawn_probability": 0.35,
+        "spawn_scope": "poi_medium",
+        "tile_type_id": "amethyst_ore",
+        "weight": 0.8
+      },
+      {
+        "enabled": true,
+        "id": "small_poi_mineral",
+        "max_cluster_size": 3,
+        "min_cluster_size": 2,
+        "require_stone": true,
+        "spawn_probability": 0.45,
+        "spawn_scope": "poi_small",
+        "tile_type_id": "turquoise_ore",
+        "weight": 1.0
+      }
+    ],
+    "global_distribution": {
+      "allow_clusters_inside_poi_rooms": false,
+      "allow_clusters_under_poi_corridors": false,
+      "base_candidate_chance": 0.02,
+      "exposed_wall_candidate_chance": 0.08,
+      "min_distance_between_cluster_seeds_cells": 2
+    }
+  },
+  "monster_generation": {
+    "ambient_isolated_sites": {
+      "attempts": 200.0,
+      "enabled": true,
+      "entries": [
+        {
+          "spawn_template_id": "ghoul_single",
+          "weight": 1.0
+        },
+        {
+          "spawn_template_id": "skeleton_archer_single",
+          "weight": 0.6
+        },
+        {
+          "spawn_template_id": "burrower_worm_single",
+          "weight": 0.5
+        }
+      ],
+      "min_distance_between_sites_cells": 4.0,
+      "min_distance_from_player_spawns_cells": 12.0
+    },
+    "ambient_nests": {
+      "attempts": 40.0,
+      "enabled": true,
+      "entries": [
+        {
+          "nest_template_id": "ghoul_nest",
+          "weight": 1.0
+        }
+      ],
+      "min_distance_between_nests_cells": 8.0,
+      "min_distance_from_player_spawns_cells": 16.0
+    },
+    "global": {
+      "debug_show_spawn_sites_by_default": true,
+      "enabled": true
+    },
+    "isolated_spawn_templates": [
+      {
+        "id": "ghoul_single",
+        "monster_id": "ghoul"
+      },
+      {
+        "id": "skeleton_archer_single",
+        "monster_id": "skeleton_archer"
+      },
+      {
+        "id": "turquoise_guard_single",
+        "monster_id": "ghoul"
+      },
+      {
+        "id": "burrower_worm_single",
+        "monster_id": "burrower_worm"
+      }
+    ],
+    "nest_templates": [
+      {
+        "activation_radius_m": 10.0,
+        "id": "ghoul_nest",
+        "loot_table_id": "ghoul_nest_loot",
+        "max_alive_children": 4.0,
+        "max_hit_points": 120.0,
+        "monster_id": "ghoul",
+        "nest_unit_id": "ghoul_nest",
+        "spawn_interval_sec": 8.0
+      },
+      {
+        "activation_radius_m": 12.0,
+        "id": "amethyst_nest",
+        "loot_table_id": "amethyst_nest_loot",
+        "max_alive_children": 3.0,
+        "max_hit_points": 150.0,
+        "monster_id": "skeleton_archer",
+        "nest_unit_id": "amethyst_nest",
+        "spawn_interval_sec": 10.0
+      },
+      {
+        "activation_radius_m": 8.0,
+        "id": "turquoise_nest",
+        "loot_table_id": "turquoise_nest_loot",
+        "max_alive_children": 2.0,
+        "max_hit_points": 90.0,
+        "monster_id": "ghoul",
+        "nest_unit_id": "turquoise_nest",
+        "spawn_interval_sec": 6.0
+      }
+    ]
+  },
+  "poi_generation": {
+    "global": {
+      "default_min_distance_between_pois_cells": 12.0,
+      "default_room_content_anchor_search_radius_cells": 3.0,
+      "enabled": true,
+      "placement_attempts_per_poi": 40.0
+    },
+    "poi_types": [
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 4.0,
+          "extra_connection_chance": 0.15,
+          "max_extra_connections": 2.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "poi_large_gold_core",
+            "enabled": true
+          },
+          "main_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "ghoul_nest",
+                "weight": 0.5
+              }
+            ],
+            "none_weight": 0.5
+          },
+          "sub_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.0
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 0.6
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "ghoul_nest",
+                "weight": 0.4
+              }
+            ],
+            "none_weight": 0.4
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 4.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 2
+        },
+        "count": 1,
+        "dedicated_mineral_id": "gold_block",
+        "enabled": true,
+        "id": "large_gold_dungeon",
+        "main_room": {
+          "height_max": 15,
+          "height_min": 11,
+          "width_max": 15,
+          "width_min": 11
+        },
+        "placement": {
+          "footprint_padding_cells": 3.0,
+          "min_distance_from_other_pois_cells": 15.0,
+          "poi_attempts": 40.0,
+          "room_attempts": 20.0
+        },
+        "sub_rooms": {
+          "count_max": 5,
+          "count_min": 4,
+          "height_max": 9,
+          "height_min": 5,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 18.0,
+          "placement_radius_min_cells": 6.0,
+          "width_max": 9,
+          "width_min": 5
+        },
+        "torch": {
+          "coverage_radius_cells": 4.0,
+          "enabled": true,
+          "max_torch_count": 8.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.6,
+          "enabled": true,
+          "radius_cells": 35,
+          "rays": 7.0,
+          "twist": 1.2
+        },
+        "weight": 1.0
+      },
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 3.0,
+          "extra_connection_chance": 0.1,
+          "max_extra_connections": 1.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "poi_medium_amethyst_core",
+            "enabled": true
+          },
+          "main_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "amethyst_nest",
+                "weight": 0.4
+              }
+            ],
+            "none_weight": 0.55
+          },
+          "sub_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "amethyst_nest",
+                "weight": 0.3
+              }
+            ],
+            "none_weight": 0.45
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 4.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 2.0
+        },
+        "count": 1.0,
+        "dedicated_mineral_id": "amethyst_ore",
+        "enabled": true,
+        "id": "medium_amethyst_dungeon",
+        "main_room": {
+          "height_max": 13.0,
+          "height_min": 9.0,
+          "width_max": 13.0,
+          "width_min": 9.0
+        },
+        "placement": {
+          "footprint_padding_cells": 2.0,
+          "min_distance_from_other_pois_cells": 10.0,
+          "poi_attempts": 30.0,
+          "room_attempts": 16.0
+        },
+        "sub_rooms": {
+          "count_max": 2.0,
+          "count_min": 1.0,
+          "height_max": 7.0,
+          "height_min": 5.0,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 12.0,
+          "placement_radius_min_cells": 5.0,
+          "width_max": 7.0,
+          "width_min": 4.0
+        },
+        "torch": {
+          "coverage_radius_cells": 4.0,
+          "enabled": true,
+          "max_torch_count": 6.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.5,
+          "enabled": true,
+          "radius_cells": 25.0,
+          "rays": 5.0,
+          "twist": 0.9
+        },
+        "weight": 1.0
+      },
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 2.0,
+          "extra_connection_chance": 0.05,
+          "max_extra_connections": 1.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "poi_small_turquoise_core",
+            "enabled": true
+          },
+          "main_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "turquoise_guard_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "turquoise_nest",
+                "weight": 0.2
+              }
+            ],
+            "none_weight": 0.6
+          },
+          "sub_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "turquoise_guard_single",
+                "weight": 1.0
+              }
+            ],
+            "nest_entries": [
+              {
+                "nest_template_id": "turquoise_nest",
+                "weight": 0.2
+              }
+            ],
+            "none_weight": 0.5
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 3.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 1.0
+        },
+        "count": 2.0,
+        "dedicated_mineral_id": "turquoise_ore",
+        "enabled": true,
+        "id": "small_turquoise_dungeon",
+        "main_room": {
+          "height_max": 9.0,
+          "height_min": 7.0,
+          "width_max": 9.0,
+          "width_min": 7.0
+        },
+        "placement": {
+          "footprint_padding_cells": 1.0,
+          "min_distance_from_other_pois_cells": 2.0,
+          "poi_attempts": 20.0,
+          "room_attempts": 12.0
+        },
+        "sub_rooms": {
+          "count_max": 0.0,
+          "count_min": 0.0,
+          "height_max": 6.0,
+          "height_min": 4.0,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 8.0,
+          "placement_radius_min_cells": 4.0,
+          "width_max": 6.0,
+          "width_min": 4.0
+        },
+        "torch": {
+          "coverage_radius_cells": 3.0,
+          "enabled": true,
+          "max_torch_count": 4.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.3,
+          "enabled": true,
+          "radius_cells": 15.0,
+          "rays": 3.0,
+          "twist": 1.4
+        },
+        "weight": 1.0
+      }
+    ]
+  },
+  "schema_version": 1.0,
+  "terrain": {
+    "global_corridors": {
+      "count": 8,
+      "enabled": true,
+      "length_factor": 0.6,
+      "width_cells": 3,
+      "wobble_chance": 0.2
+    },
+    "noise_fill_percent": 0.6,
+    "smooth_iterations": 4
+  }
+}

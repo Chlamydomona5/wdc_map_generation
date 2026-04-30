@@ -1,0 +1,190 @@
+{
+  "debug": {
+    "map_view": {
+      "show_cluster_bounds": true,
+      "show_corridor_doors": false,
+      "show_poi_graph": true,
+      "show_room_labels": false,
+      "show_spawn_sites": true
+    }
+  },
+  "description": "Dense trap playground for hands-on testing of all 5 environmental traps",
+  "display_name": "Trap Playground",
+  "id": "trap_playground",
+  "map": {
+    "cell_size_m": 1.0,
+    "height_cells": 64,
+    "player_spawn": {
+      "count": 2.0,
+      "edge_margin_cells": 6.0,
+      "min_distance_between_spawns_cells": 8.0
+    },
+    "seed": {
+      "fixed_value": 7777,
+      "mode": "fixed"
+    },
+    "width_cells": 64
+  },
+  "meta": {
+    "author": "wdc",
+    "notes": "All 5 trap types at high density. Fixed seed for reproducible test runs.",
+    "tags": [
+      "playground",
+      "traps",
+      "dev"
+    ]
+  },
+  "minerals": {
+    "cluster_overrides": [],
+    "cluster_types": [
+      {
+        "enabled": true,
+        "id": "common_mineral",
+        "max_cluster_size": 4,
+        "min_cluster_size": 2,
+        "require_stone": true,
+        "spawn_probability": 0.5,
+        "spawn_scope": "global_common",
+        "tile_type_id": "mineral_wall",
+        "weight": 1.0
+      }
+    ],
+    "global_distribution": {
+      "allow_clusters_inside_poi_rooms": false,
+      "allow_clusters_under_poi_corridors": false,
+      "base_candidate_chance": 0.05,
+      "exposed_wall_candidate_chance": 0.12,
+      "min_distance_between_cluster_seeds_cells": 2
+    }
+  },
+  "monster_generation": {
+    "ambient_isolated_sites": {
+      "attempts": 20.0,
+      "enabled": false,
+      "entries": [],
+      "min_distance_between_sites_cells": 4.0,
+      "min_distance_from_player_spawns_cells": 12.0
+    },
+    "ambient_nests": {
+      "attempts": 10.0,
+      "enabled": false,
+      "entries": [],
+      "min_distance_between_nests_cells": 8.0,
+      "min_distance_from_player_spawns_cells": 16.0
+    },
+    "global": {
+      "debug_show_spawn_sites_by_default": true,
+      "enabled": true
+    },
+    "isolated_spawn_templates": [
+      {
+        "id": "ghoul_single",
+        "monster_id": "ghoul"
+      }
+    ],
+    "nest_templates": []
+  },
+  "poi_generation": {
+    "global": {
+      "default_min_distance_between_pois_cells": 10.0,
+      "default_room_content_anchor_search_radius_cells": 3.0,
+      "enabled": true,
+      "placement_attempts_per_poi": 30.0
+    },
+    "poi_types": [
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 2.0,
+          "extra_connection_chance": 0.05,
+          "max_extra_connections": 1.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          },
+          "sub_room_roll": {
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 3.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 2.0
+        },
+        "count": 2.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "trap_playground_room",
+        "main_room": {
+          "height_max": 9.0,
+          "height_min": 7.0,
+          "width_max": 9.0,
+          "width_min": 7.0
+        },
+        "placement": {
+          "footprint_padding_cells": 1.0,
+          "min_distance_from_other_pois_cells": 6.0,
+          "poi_attempts": 20.0,
+          "room_attempts": 12.0
+        },
+        "sub_rooms": {
+          "count_max": 1.0,
+          "count_min": 1.0,
+          "height_max": 6.0,
+          "height_min": 4.0,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 8.0,
+          "placement_radius_min_cells": 4.0,
+          "width_max": 6.0,
+          "width_min": 4.0
+        },
+        "torch": {
+          "coverage_radius_cells": 3.0,
+          "enabled": true,
+          "max_torch_count": 3.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.3,
+          "enabled": false,
+          "radius_cells": 10.0,
+          "rays": 3.0,
+          "twist": 1.0
+        },
+        "weight": 1.0
+      }
+    ]
+  },
+  "schema_version": 1.0,
+  "terrain": {
+    "global_corridors": {
+      "count": 6,
+      "enabled": true,
+      "length_factor": 0.6,
+      "width_cells": 3,
+      "wobble_chance": 0.2
+    },
+    "noise_fill_percent": 0.55,
+    "smooth_iterations": 3
+  },
+  "traps": {
+    "high_density_mode": true
+  }
+}
