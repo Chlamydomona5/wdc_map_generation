@@ -1,6 +1,8 @@
 class_name WdcMapGenerationGenerator
 extends RefCounted
 
+const WdcMapGenerationTypes = preload("generated_map_types.gd")
+
 signal generation_stage_completed(stage: StringName, map_data: WdcMapGenerationTypes.MapData)
 
 var last_resolved_seed: int = 0

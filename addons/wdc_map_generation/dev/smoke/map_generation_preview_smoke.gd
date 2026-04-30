@@ -4,6 +4,8 @@ const CONFIG_CATALOG = preload("../../config/data_generated_map_config_catalog.g
 const MAP_TYPES = preload("../../core/generated_map_types.gd")
 const GENERATOR_SCRIPT = preload("../../core/generated_map_generator.gd")
 const PREVIEW_SCENE = preload("../../preview/scenes/map_generation_preview.tscn")
+const WdcMapGenerationTypes = MAP_TYPES
+const WdcMapGenerationGenerator = GENERATOR_SCRIPT
 
 
 func _init() -> void:

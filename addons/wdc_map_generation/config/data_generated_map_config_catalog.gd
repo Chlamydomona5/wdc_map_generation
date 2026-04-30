@@ -6,6 +6,7 @@ const CONFIG_EXTENSION: String = ".json"
 const DEFAULT_CONFIG_BASENAME: String = "default_generated_map"
 
 const GENERATED_MAP_TYPES_SCRIPT = preload("../core/generated_map_types.gd")
+const WdcMapGenerationTypes = GENERATED_MAP_TYPES_SCRIPT
 
 
 static func get_config_directory_path() -> String:

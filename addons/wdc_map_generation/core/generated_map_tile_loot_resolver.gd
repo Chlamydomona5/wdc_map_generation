@@ -4,6 +4,8 @@
 class_name WdcMapGenerationTileLootResolver
 extends RefCounted
 
+const WdcMapGenerationTypes = preload("generated_map_types.gd")
+
 
 static var _mineral_wall_weighted_entries: Array[Dictionary] = [
 	{"item_id": "coal_ore", "min_count": 1, "max_count": 2, "weight": 6},
@@ -66,7 +68,7 @@ static func build_dropped_item_stack_spawn_payload(
 		return {}
 	return {
 		"spawn_position": spawn_position,
-		"item_snapshot": slot_snapshots[0],
+		"item_snapshot": _normalize_item_snapshot(slot_snapshots[0]),
 	}
 
 
@@ -79,19 +81,43 @@ static func build_dropped_item_stack_spawn_descriptors(
 		_drop_definitions.get(tile_type, {}) as Dictionary,
 		rng
 	)
+	return build_dropped_item_stack_spawn_descriptors_from_slot_snapshots(
+		slot_snapshots,
+		spawn_position
+	)
+
+
+static func build_dropped_item_stack_spawn_descriptors_from_slot_snapshots(
+	slot_snapshots: Array,
+	spawn_position: Vector3
+) -> Array[Dictionary]:
 	var descriptors: Array[Dictionary] = []
 	for snapshot_value: Variant in slot_snapshots:
-		if not (snapshot_value is Dictionary):
+		var spawn_payload: Dictionary = build_dropped_item_stack_spawn_payload_from_item_snapshot(
+			_normalize_item_snapshot(snapshot_value),
+			spawn_position
+		)
+		if spawn_payload.is_empty():
 			continue
 		descriptors.append({
 			"object_kind": "dropped_item_stack",
 			"spawn_position": spawn_position,
-			"spawn_payload": {
-				"spawn_position": spawn_position,
-				"item_snapshot": (snapshot_value as Dictionary).duplicate(true),
-			},
+			"spawn_payload": spawn_payload,
 		})
 	return descriptors
+
+
+static func build_dropped_item_stack_spawn_payload_from_item_snapshot(
+	item_snapshot: Dictionary,
+	spawn_position: Vector3
+) -> Dictionary:
+	var normalized_snapshot: Dictionary = _normalize_item_snapshot(item_snapshot)
+	if normalized_snapshot.is_empty():
+		return {}
+	return {
+		"spawn_position": spawn_position,
+		"item_snapshot": normalized_snapshot,
+	}
 
 
 static func build_inventory_slot_snapshots(
@@ -102,6 +128,33 @@ static func build_inventory_slot_snapshots(
 		_inventory_grant_definitions.get(tile_type, {}) as Dictionary,
 		rng
 	)
+
+
+static func build_loot_slot_snapshots(tile_type: int, rng: RandomNumberGenerator = null) -> Array:
+	return _build_slot_snapshots_from_definition(
+		_drop_definitions.get(tile_type, {}) as Dictionary,
+		rng
+	)
+
+
+static func get_drop_definition(tile_type: int) -> Dictionary:
+	return (_drop_definitions.get(tile_type, {}) as Dictionary).duplicate(true)
+
+
+static func _normalize_item_snapshot(snapshot_value: Variant) -> Dictionary:
+	if not (snapshot_value is Dictionary):
+		return {}
+	var snapshot: Dictionary = (snapshot_value as Dictionary).duplicate(true)
+	if snapshot.has("stack") and snapshot.get("stack", {}) is Dictionary:
+		snapshot = (snapshot.get("stack", {}) as Dictionary).duplicate(true)
+	var item_id: String = str(snapshot.get("item_id", ""))
+	var count: int = maxi(int(snapshot.get("count", 0)), 0)
+	if item_id.is_empty() or count <= 0:
+		return {}
+	return {
+		"item_id": item_id,
+		"count": count,
+	}
 
 
 static func _build_slot_snapshots_from_definition(

@@ -3,6 +3,8 @@ extends Control
 const CONFIG_CATALOG = preload("../../config/data_generated_map_config_catalog.gd")
 const MAP_TYPES = preload("../../core/generated_map_types.gd")
 const GENERATOR_SCRIPT = preload("../../core/generated_map_generator.gd")
+const WdcMapGenerationTypes = MAP_TYPES
+const WdcMapGenerationGenerator = GENERATOR_SCRIPT
 
 const COLOR_FLOOR: Color = Color(0.18, 0.18, 0.18, 1.0)
 const COLOR_WALL: Color = Color(0.06, 0.06, 0.06, 1.0)
