@@ -2,6 +2,9 @@ class_name WdcMapGenerationConfigCatalog
 extends RefCounted
 
 const CONFIG_DIRECTORY_PATH: String = "res://addons/wdc_map_generation/config/generated_map_configs"
+const PARENT_PROJECT_CONFIG_DIRECTORY_PATH: String = (
+	"res://map_generation/addons/wdc_map_generation/config/generated_map_configs"
+)
 const CONFIG_EXTENSION: String = ".json"
 const DEFAULT_CONFIG_BASENAME: String = "default_generated_map"
 
@@ -10,7 +13,7 @@ const WdcMapGenerationTypes = GENERATED_MAP_TYPES_SCRIPT
 
 
 static func get_config_directory_path() -> String:
-	return CONFIG_DIRECTORY_PATH
+	return _resolve_config_directory_path()
 
 
 static func get_config_extension() -> String:
@@ -47,12 +50,12 @@ static func build_config_resource_path(filename_value: Variant) -> String:
 	var normalized_filename: String = normalize_config_filename_input(filename_value)
 	if normalized_filename.is_empty():
 		normalized_filename = DEFAULT_CONFIG_BASENAME
-	return "%s/%s%s" % [CONFIG_DIRECTORY_PATH, normalized_filename, CONFIG_EXTENSION]
+	return "%s/%s%s" % [_resolve_config_directory_path(), normalized_filename, CONFIG_EXTENSION]
 
 
 static func list_available_configs() -> Array[Dictionary]:
 	var listed: Array[Dictionary] = []
-	var directory: DirAccess = DirAccess.open(CONFIG_DIRECTORY_PATH)
+	var directory: DirAccess = DirAccess.open(_resolve_config_directory_path())
 	if directory == null:
 		return listed
 	directory.list_dir_begin()
@@ -76,6 +79,14 @@ static func list_available_configs() -> Array[Dictionary]:
 		) < 0
 	)
 	return listed
+
+
+static func _resolve_config_directory_path() -> String:
+	if DirAccess.dir_exists_absolute(CONFIG_DIRECTORY_PATH):
+		return CONFIG_DIRECTORY_PATH
+	if DirAccess.dir_exists_absolute(PARENT_PROJECT_CONFIG_DIRECTORY_PATH):
+		return PARENT_PROJECT_CONFIG_DIRECTORY_PATH
+	return CONFIG_DIRECTORY_PATH
 
 
 static func load_config_dict_by_filename(filename_value: Variant) -> Dictionary:

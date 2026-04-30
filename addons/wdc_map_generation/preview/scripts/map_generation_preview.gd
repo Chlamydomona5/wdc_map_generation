@@ -121,6 +121,8 @@ func _on_save_current_config_pressed() -> void:
 		_set_status("Save failed: %s" % path)
 		return
 	file.store_string(JSON.stringify(_current_config_dict, "  "))
+	file.flush()
+	file = null
 	_current_config_filename = filename
 	_filename_input.text = filename
 	_set_status("Saved: %s" % path)
