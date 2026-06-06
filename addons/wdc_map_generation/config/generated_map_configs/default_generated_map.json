@@ -13,18 +13,50 @@
   "id": "default_generated_map",
   "map": {
     "cell_size_m": 1.0,
-    "height_cells": 128,
+    "height_cells": 128.0,
     "player_spawn": {
       "count": 2.0,
       "edge_margin_cells": 6.0,
       "min_distance_between_spawns_cells": 10.0
     },
     "seed": {
-      "fixed_value": 0,
+      "fixed_value": 0.0,
       "mode": "random"
     },
-    "width_cells": 96
+    "width_cells": 128.0
   },
+  "map_layers": [
+    {
+      "id": "inner",
+      "max_radius_ratio": 0.300000000046566,
+      "mineral_budget_weight": 3.0,
+      "monster_budget_weight": 3.0,
+      "poi_budget_weight": 3.0,
+      "room_content_danger_multiplier": 2.0,
+      "stone_max_hit_points": 4.0,
+      "trap_budget_weight": 3.0
+    },
+    {
+      "id": "middle",
+      "max_radius_ratio": 0.550000000046566,
+      "mineral_budget_weight": 1.0,
+      "monster_budget_weight": 1.25,
+      "poi_budget_weight": 2.0,
+      "room_content_danger_multiplier": 1.15000000002328,
+      "stone_max_hit_points": 2.0,
+      "trap_budget_weight": 1.25
+    },
+    {
+      "id": "outer",
+      "max_radius_ratio": 1.01000000000931,
+      "mineral_budget_weight": 0.75,
+      "monster_budget_weight": 0.75,
+      "poi_budget_weight": 0.75,
+      "room_content_danger_multiplier": 0.849999999976717,
+      "stone_max_hit_points": 1.0,
+      "trap_budget_weight": 0.75
+    }
+  ],
   "meta": {
     "author": "wdc",
     "notes": "",
@@ -40,7 +72,7 @@
         "max_cluster_size": 8.0,
         "min_cluster_size": 4.0,
         "require_stone": false,
-        "spawn_probability": 0.65
+        "spawn_probability": 0.650000000023283
       },
       {
         "base_cluster_type_id": "medium_poi_mineral",
@@ -48,7 +80,7 @@
         "max_cluster_size": 6.0,
         "min_cluster_size": 3.0,
         "require_stone": false,
-        "spawn_probability": 0.6
+        "spawn_probability": 0.599999999976717
       },
       {
         "base_cluster_type_id": "small_poi_mineral",
@@ -56,17 +88,17 @@
         "max_cluster_size": 4.0,
         "min_cluster_size": 2.0,
         "require_stone": false,
-        "spawn_probability": 0.55
+        "spawn_probability": 0.550000000046566
       }
     ],
     "cluster_types": [
       {
         "enabled": true,
         "id": "common_mineral",
-        "max_cluster_size": 5,
-        "min_cluster_size": 2,
+        "max_cluster_size": 5.0,
+        "min_cluster_size": 2.0,
         "require_stone": true,
-        "spawn_probability": 0.45,
+        "spawn_probability": 0.449999999953434,
         "spawn_scope": "global_common",
         "tile_type_id": "mineral_wall",
         "weight": 1.0
@@ -74,19 +106,19 @@
       {
         "enabled": true,
         "id": "rare_mineral",
-        "max_cluster_size": 3,
-        "min_cluster_size": 1,
+        "max_cluster_size": 3.0,
+        "min_cluster_size": 1.0,
         "require_stone": true,
         "spawn_probability": 0.25,
         "spawn_scope": "global_rare",
         "tile_type_id": "rare_mineral_wall",
-        "weight": 0.8
+        "weight": 0.800000000046566
       },
       {
         "enabled": true,
         "id": "large_poi_mineral",
-        "max_cluster_size": 4,
-        "min_cluster_size": 1,
+        "max_cluster_size": 4.0,
+        "min_cluster_size": 1.0,
         "require_stone": true,
         "spawn_probability": 0.25,
         "spawn_scope": "poi_large",
@@ -96,21 +128,21 @@
       {
         "enabled": true,
         "id": "medium_poi_mineral",
-        "max_cluster_size": 4,
-        "min_cluster_size": 1,
+        "max_cluster_size": 4.0,
+        "min_cluster_size": 1.0,
         "require_stone": true,
-        "spawn_probability": 0.35,
+        "spawn_probability": 0.349999999976717,
         "spawn_scope": "poi_medium",
         "tile_type_id": "amethyst_ore",
-        "weight": 0.8
+        "weight": 0.800000000046566
       },
       {
         "enabled": true,
         "id": "small_poi_mineral",
-        "max_cluster_size": 3,
-        "min_cluster_size": 2,
+        "max_cluster_size": 3.0,
+        "min_cluster_size": 2.0,
         "require_stone": true,
-        "spawn_probability": 0.45,
+        "spawn_probability": 0.449999999953434,
         "spawn_scope": "poi_small",
         "tile_type_id": "turquoise_ore",
         "weight": 1.0
@@ -119,9 +151,9 @@
     "global_distribution": {
       "allow_clusters_inside_poi_rooms": false,
       "allow_clusters_under_poi_corridors": false,
-      "base_candidate_chance": 0.02,
-      "exposed_wall_candidate_chance": 0.08,
-      "min_distance_between_cluster_seeds_cells": 2
+      "base_candidate_chance": 0.0200000000186265,
+      "exposed_wall_candidate_chance": 0.0799999999580905,
+      "min_distance_between_cluster_seeds_cells": 2.0
     }
   },
   "monster_generation": {
@@ -135,7 +167,7 @@
         },
         {
           "spawn_template_id": "skeleton_archer_single",
-          "weight": 0.6
+          "weight": 0.599999999976717
         },
         {
           "spawn_template_id": "burrower_worm_single",
@@ -223,7 +255,7 @@
       {
         "connectivity": {
           "candidate_neighbors_per_room": 4.0,
-          "extra_connection_chance": 0.15,
+          "extra_connection_chance": 0.150000000023283,
           "max_extra_connections": 2.0,
           "mode": "mst_plus_extra"
         },
@@ -258,16 +290,16 @@
               },
               {
                 "spawn_template_id": "skeleton_archer_single",
-                "weight": 0.6
+                "weight": 0.599999999976717
               }
             ],
             "nest_entries": [
               {
                 "nest_template_id": "ghoul_nest",
-                "weight": 0.4
+                "weight": 0.400000000023283
               }
             ],
-            "none_weight": 0.4
+            "none_weight": 0.400000000023283
           }
         },
         "corridor": {
@@ -277,17 +309,17 @@
           "retry_doorway_count": 4.0,
           "reuse_existing_corridors": true,
           "style": "orthogonal_l",
-          "width_cells": 2
+          "width_cells": 2.0
         },
-        "count": 1,
+        "count": 1.0,
         "dedicated_mineral_id": "gold_block",
         "enabled": true,
         "id": "large_gold_dungeon",
         "main_room": {
-          "height_max": 15,
-          "height_min": 11,
-          "width_max": 15,
-          "width_min": 11
+          "height_max": 15.0,
+          "height_min": 11.0,
+          "width_max": 15.0,
+          "width_min": 11.0
         },
         "placement": {
           "footprint_padding_cells": 3.0,
@@ -296,15 +328,15 @@
           "room_attempts": 20.0
         },
         "sub_rooms": {
-          "count_max": 5,
-          "count_min": 4,
-          "height_max": 9,
-          "height_min": 5,
+          "count_max": 5.0,
+          "count_min": 4.0,
+          "height_max": 9.0,
+          "height_min": 5.0,
           "min_gap_from_rooms_cells": 1.0,
           "placement_radius_max_cells": 18.0,
           "placement_radius_min_cells": 6.0,
-          "width_max": 9,
-          "width_min": 5
+          "width_max": 9.0,
+          "width_min": 5.0
         },
         "torch": {
           "coverage_radius_cells": 4.0,
@@ -314,18 +346,18 @@
           "wall_inset_cells": 1.0
         },
         "trace": {
-          "density_ratio": 0.6,
+          "density_ratio": 0.599999999976717,
           "enabled": true,
-          "radius_cells": 35,
+          "radius_cells": 35.0,
           "rays": 7.0,
-          "twist": 1.2
+          "twist": 1.19999999995343
         },
         "weight": 1.0
       },
       {
         "connectivity": {
           "candidate_neighbors_per_room": 3.0,
-          "extra_connection_chance": 0.1,
+          "extra_connection_chance": 0.0999999999767169,
           "max_extra_connections": 1.0,
           "mode": "mst_plus_extra"
         },
@@ -346,10 +378,10 @@
             "nest_entries": [
               {
                 "nest_template_id": "amethyst_nest",
-                "weight": 0.4
+                "weight": 0.400000000023283
               }
             ],
-            "none_weight": 0.55
+            "none_weight": 0.550000000046566
           },
           "sub_room_roll": {
             "min_distance_from_door_cells": 2.0,
@@ -362,10 +394,10 @@
             "nest_entries": [
               {
                 "nest_template_id": "amethyst_nest",
-                "weight": 0.3
+                "weight": 0.300000000046566
               }
             ],
-            "none_weight": 0.45
+            "none_weight": 0.449999999953434
           }
         },
         "corridor": {
@@ -416,14 +448,14 @@
           "enabled": true,
           "radius_cells": 25.0,
           "rays": 5.0,
-          "twist": 0.9
+          "twist": 0.900000000023283
         },
         "weight": 1.0
       },
       {
         "connectivity": {
           "candidate_neighbors_per_room": 2.0,
-          "extra_connection_chance": 0.05,
+          "extra_connection_chance": 0.0500000000465661,
           "max_extra_connections": 1.0,
           "mode": "mst_plus_extra"
         },
@@ -444,10 +476,10 @@
             "nest_entries": [
               {
                 "nest_template_id": "turquoise_nest",
-                "weight": 0.2
+                "weight": 0.199999999953434
               }
             ],
-            "none_weight": 0.6
+            "none_weight": 0.599999999976717
           },
           "sub_room_roll": {
             "min_distance_from_door_cells": 2.0,
@@ -460,7 +492,7 @@
             "nest_entries": [
               {
                 "nest_template_id": "turquoise_nest",
-                "weight": 0.2
+                "weight": 0.199999999953434
               }
             ],
             "none_weight": 0.5
@@ -510,11 +542,11 @@
           "wall_inset_cells": 1.0
         },
         "trace": {
-          "density_ratio": 0.3,
+          "density_ratio": 0.300000000046566,
           "enabled": true,
           "radius_cells": 15.0,
           "rays": 3.0,
-          "twist": 1.4
+          "twist": 1.40000000002328
         },
         "weight": 1.0
       }
@@ -523,13 +555,13 @@
   "schema_version": 1.0,
   "terrain": {
     "global_corridors": {
-      "count": 8,
+      "count": 8.0,
       "enabled": true,
-      "length_factor": 0.6,
-      "width_cells": 3,
-      "wobble_chance": 0.2
+      "length_factor": 0.599999999976717,
+      "width_cells": 3.0,
+      "wobble_chance": 0.199999999953434
     },
-    "noise_fill_percent": 0.6,
-    "smooth_iterations": 4
+    "noise_fill_percent": 0.599999999976717,
+    "smooth_iterations": 4.0
   }
 }

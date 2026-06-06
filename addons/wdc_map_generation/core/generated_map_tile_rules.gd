@@ -57,7 +57,7 @@ static func refresh_cell_runtime_state(cell: RefCounted) -> void:
 	if cell == null:
 		return
 	var tile_type: int = _encode_server_tile(cell)
-	var max_hit_points: int = get_tile_max_hit_points(tile_type)
+	var max_hit_points: int = _resolve_cell_max_hit_points(cell, tile_type)
 	cell.max_hit_points = max_hit_points
 	if max_hit_points <= 0:
 		cell.current_hit_points = 0
@@ -117,4 +117,29 @@ static func _encode_server_tile(cell: RefCounted) -> int:
 	if cell.has_mineral:
 		return WdcMapGenerationTypes.ServerTileType.MINERAL_WALL
 	return WdcMapGenerationTypes.ServerTileType.WALL
+
+
+static func _resolve_cell_max_hit_points(cell: RefCounted, tile_type: int) -> int:
+	if cell != null and _is_layer_durability_tile(tile_type):
+		var override_value: int = int(cell.get("durability_override_max_hit_points"))
+		if override_value > 0:
+			return override_value
+	return get_tile_max_hit_points(tile_type)
+
+
+static func _is_layer_durability_tile(tile_type: int) -> bool:
+	match tile_type:
+		WdcMapGenerationTypes.ServerTileType.WALL:
+			return true
+		WdcMapGenerationTypes.ServerTileType.MINERAL_WALL:
+			return true
+		WdcMapGenerationTypes.ServerTileType.RARE_MINERAL_WALL:
+			return true
+		WdcMapGenerationTypes.ServerTileType.TURQUOISE_ORE:
+			return true
+		WdcMapGenerationTypes.ServerTileType.AMETHYST_ORE:
+			return true
+		WdcMapGenerationTypes.ServerTileType.GOLD_BLOCK:
+			return true
+	return false
 

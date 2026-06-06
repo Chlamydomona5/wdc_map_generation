@@ -24,6 +24,29 @@
         }
       }
     },
+    "map_layers": {
+      "type": "array",
+      "description": "Three concentric map layers resolved from the map geometry center.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "enum": ["inner", "middle", "outer"] },
+          "max_radius_cells": { "type": "number", "minimum": 0 },
+          "max_radius_ratio": { "type": "number", "minimum": 0 },
+          "stone_max_hit_points": { "type": "integer", "minimum": 1 },
+          "mineral_budget_weight": { "type": "number", "minimum": 0 },
+          "poi_budget_weight": { "type": "number", "minimum": 0 },
+          "trap_budget_weight": { "type": "number", "minimum": 0 },
+          "monster_budget_weight": { "type": "number", "minimum": 0 },
+          "room_content_danger_multiplier": { "type": "number", "minimum": 0 }
+        },
+        "anyOf": [
+          { "required": ["max_radius_cells"] },
+          { "required": ["max_radius_ratio"] }
+        ]
+      }
+    },
     "terrain": { "type": "object" },
     "minerals": { "type": "object" },
     "poi_generation": { "type": "object" },
@@ -31,4 +54,3 @@
     "debug": { "type": "object" }
   }
 }
-

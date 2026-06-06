@@ -38,6 +38,7 @@ class CellData:
 	var current_hit_points: int = 0
 	var max_hit_points: int = 0
 	var durability_tile_type: int = -1
+	var durability_override_max_hit_points: int = 0
 
 	func clone() -> CellData:
 		var copied: CellData = CellData.new()
@@ -53,6 +54,7 @@ class CellData:
 		copied.current_hit_points = current_hit_points
 		copied.max_hit_points = max_hit_points
 		copied.durability_tile_type = durability_tile_type
+		copied.durability_override_max_hit_points = durability_override_max_hit_points
 		return copied
 
 
@@ -103,6 +105,7 @@ class MapConfig:
 	var mineral_cluster_types: Array[Dictionary] = []
 	var mineral_cluster_overrides: Array[Dictionary] = []
 	var poi_templates: Array[Dictionary] = []
+	var map_layers: Array[Dictionary] = []
 	var traps_high_density: bool = false
 	var traps_spike_max_count: int = -1
 	var traps_spike_min_spacing: int = -1
@@ -157,6 +160,78 @@ class MapConfig:
 			0,
 			mineral_min_distance_between_cluster_seeds_cells
 		)
+		map_layers = _normalize_map_layers(map_layers, width, height)
+
+	func _normalize_map_layers(
+		layer_values: Array[Dictionary],
+		map_width: int,
+		map_height: int
+	) -> Array[Dictionary]:
+		var max_radius: float = sqrt(
+			pow(float(map_width) * 0.5, 2.0) + pow(float(map_height) * 0.5, 2.0)
+		)
+		var defaults: Array[Dictionary] = [
+			{
+				"id": "inner",
+				"max_radius_ratio": 0.34,
+				"stone_max_hit_points": 4,
+				"mineral_budget_weight": 2.0,
+				"poi_budget_weight": 2.0,
+				"trap_budget_weight": 2.0,
+				"monster_budget_weight": 2.0,
+				"room_content_danger_multiplier": 1.5,
+			},
+			{
+				"id": "middle",
+				"max_radius_ratio": 0.67,
+				"stone_max_hit_points": 2,
+				"mineral_budget_weight": 1.25,
+				"poi_budget_weight": 1.25,
+				"trap_budget_weight": 1.25,
+				"monster_budget_weight": 1.25,
+				"room_content_danger_multiplier": 1.15,
+			},
+			{
+				"id": "outer",
+				"max_radius_ratio": 1.01,
+				"stone_max_hit_points": 1,
+				"mineral_budget_weight": 0.75,
+				"poi_budget_weight": 0.75,
+				"trap_budget_weight": 0.75,
+				"monster_budget_weight": 0.75,
+				"room_content_danger_multiplier": 0.85,
+			},
+		]
+		var by_id: Dictionary = {}
+		for layer_value: Dictionary in layer_values:
+			var layer_id: String = str(layer_value.get("id", "")).strip_edges()
+			if layer_id.is_empty():
+				continue
+			by_id[layer_id] = layer_value
+		var normalized: Array[Dictionary] = []
+		for default_layer: Dictionary in defaults:
+			var merged: Dictionary = default_layer.duplicate(true)
+			var layer_id: String = str(merged.get("id", ""))
+			if by_id.has(layer_id):
+				merged.merge((by_id[layer_id] as Dictionary).duplicate(true), true)
+			var max_radius_cells: float = float(merged.get("max_radius_cells", -1.0))
+			if max_radius_cells <= 0.0:
+				max_radius_cells = float(merged.get("max_radius_ratio", 1.0)) * max_radius
+			merged["max_radius_cells"] = maxf(max_radius_cells, 0.0)
+			merged["stone_max_hit_points"] = maxi(int(merged.get("stone_max_hit_points", 1)), 1)
+			merged["mineral_budget_weight"] = maxf(float(merged.get("mineral_budget_weight", 1.0)), 0.0)
+			merged["poi_budget_weight"] = maxf(float(merged.get("poi_budget_weight", 1.0)), 0.0)
+			merged["trap_budget_weight"] = maxf(float(merged.get("trap_budget_weight", 1.0)), 0.0)
+			merged["monster_budget_weight"] = maxf(float(merged.get("monster_budget_weight", 1.0)), 0.0)
+			merged["room_content_danger_multiplier"] = maxf(
+				float(merged.get("room_content_danger_multiplier", 1.0)),
+				0.0
+			)
+			normalized.append(merged)
+		normalized.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return float(a.get("max_radius_cells", 0.0)) < float(b.get("max_radius_cells", 0.0))
+		)
+		return normalized
 
 
 class MapData:
@@ -416,6 +491,7 @@ static func apply_server_tile_to_cell(tile_type: int, cell: CellData) -> void:
 	cell.current_hit_points = 0
 	cell.max_hit_points = 0
 	cell.durability_tile_type = -1
+	cell.durability_override_max_hit_points = 0
 	if tile_type == ServerTileType.EMPTY:
 		cell.cell_type = CellType.FLOOR
 		return
@@ -517,6 +593,7 @@ static func apply_chunk_payloads_to_map_data(
 					cell.max_hit_points = maxi(tile_max_hit_points, 0)
 					cell.current_hit_points = clampi(tile_hit_points, 0, cell.max_hit_points)
 					cell.durability_tile_type = tile_type
+					cell.durability_override_max_hit_points = cell.max_hit_points
 				var next_was_floor: bool = cell.cell_type == CellType.FLOOR
 				if previous_was_floor and not next_was_floor:
 					total_floor_delta -= 1

@@ -207,6 +207,7 @@ static func apply_config_dict_to_legacy_map_config(
 		minerals_dict.get("cluster_overrides", []),
 		config.mineral_cluster_types
 	)
+	config.map_layers = _normalize_map_layers(config_dict.get("map_layers", []))
 	config.poi_templates = _normalize_poi_templates(
 		(config_dict.get("poi_generation", {}) as Dictionary).get("poi_types", [])
 	)
@@ -442,6 +443,50 @@ static func _find_cluster_type_by_id(
 		if str(cluster_entry.get("id", "")) == cluster_type_id:
 			return cluster_entry.duplicate(true)
 	return {}
+
+
+static func _normalize_map_layers(layer_values: Variant) -> Array[Dictionary]:
+	var normalized: Array[Dictionary] = []
+	if not (layer_values is Array):
+		return normalized
+	for layer_value: Variant in layer_values:
+		if not (layer_value is Dictionary):
+			continue
+		var layer_dict: Dictionary = (layer_value as Dictionary).duplicate(true)
+		var layer_id: String = str(layer_dict.get("id", "")).strip_edges()
+		if layer_id.is_empty():
+			continue
+		layer_dict["id"] = layer_id
+		if layer_dict.has("max_radius_cells"):
+			layer_dict["max_radius_cells"] = maxf(float(layer_dict["max_radius_cells"]), 0.0)
+		if layer_dict.has("max_radius_ratio"):
+			layer_dict["max_radius_ratio"] = maxf(float(layer_dict["max_radius_ratio"]), 0.0)
+		layer_dict["stone_max_hit_points"] = maxi(
+			int(layer_dict.get("stone_max_hit_points", 1)),
+			1
+		)
+		layer_dict["mineral_budget_weight"] = maxf(
+			float(layer_dict.get("mineral_budget_weight", 1.0)),
+			0.0
+		)
+		layer_dict["poi_budget_weight"] = maxf(
+			float(layer_dict.get("poi_budget_weight", 1.0)),
+			0.0
+		)
+		layer_dict["trap_budget_weight"] = maxf(
+			float(layer_dict.get("trap_budget_weight", 1.0)),
+			0.0
+		)
+		layer_dict["monster_budget_weight"] = maxf(
+			float(layer_dict.get("monster_budget_weight", 1.0)),
+			0.0
+		)
+		layer_dict["room_content_danger_multiplier"] = maxf(
+			float(layer_dict.get("room_content_danger_multiplier", 1.0)),
+			0.0
+		)
+		normalized.append(layer_dict)
+	return normalized
 
 
 static func _normalize_poi_templates(poi_templates_value: Variant) -> Array[Dictionary]:

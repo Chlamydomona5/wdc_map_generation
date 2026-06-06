@@ -2,6 +2,7 @@ class_name WdcMapGenerationGenerator
 extends RefCounted
 
 const WdcMapGenerationTypes = preload("generated_map_types.gd")
+const WdcMapGenerationTileRules = preload("generated_map_tile_rules.gd")
 
 signal generation_stage_completed(stage: StringName, map_data: WdcMapGenerationTypes.MapData)
 
@@ -77,6 +78,7 @@ func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapsho
 	_generate_poi_special_blocks(map_data, normalized_config, rng)
 	_generate_environmental_traps(map_data, normalized_config, rng)
 	_emit_stage(snapshots, STAGE_TRAP, map_data, "TRAP", capture_snapshots)
+	_apply_layer_durability_overrides(map_data, normalized_config)
 	_recalculate_stats(map_data)
 	_emit_stage(snapshots, STAGE_MINERAL, map_data, "MINERAL", capture_snapshots)
 	return {
@@ -172,13 +174,35 @@ func _place_configured_pois(
 			continue
 		var target_count: int = maxi(int(template_dict.get("count", 0)), 0)
 		var max_attempts: int = maxi(int(template_dict.get("placement", {}).get("poi_attempts", 40)), 1)
-		var placed_count: int = 0
-		var attempts: int = 0
 		var compat_poi_type: int = _resolve_compat_poi_type(template_index)
-		while placed_count < target_count and attempts < max_attempts:
-			attempts += 1
+		var placed_total: int = 0
+		var layer_budget: Dictionary = _split_layer_budget_counts(
+			target_count,
+			config,
+			"poi_budget_weight"
+		)
+		for layer: Dictionary in config.map_layers:
+			var layer_id: String = str(layer.get("id", ""))
+			var layer_target_count: int = int(layer_budget.get(layer_id, 0))
+			var placed_in_layer: int = 0
+			var attempts: int = 0
+			while placed_in_layer < layer_target_count and attempts < max_attempts * maxi(layer_target_count, 1):
+				attempts += 1
+				if _try_place_configured_poi(
+					map_data,
+					config,
+					template_dict,
+					compat_poi_type,
+					rng,
+					layer_id
+				):
+					placed_in_layer += 1
+					placed_total += 1
+		var fallback_attempts: int = 0
+		while placed_total < target_count and fallback_attempts < max_attempts * maxi(target_count, 1):
+			fallback_attempts += 1
 			if _try_place_configured_poi(map_data, config, template_dict, compat_poi_type, rng):
-				placed_count += 1
+				placed_total += 1
 		template_index += 1
 
 
@@ -197,7 +221,8 @@ func _try_place_configured_poi(
 	config: WdcMapGenerationTypes.MapConfig,
 	template_dict: Dictionary,
 	compat_poi_type: int,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	target_layer_id: String = ""
 ) -> bool:
 	var placement: Dictionary = template_dict.get("placement", {}) as Dictionary
 	var main_room_cfg: Dictionary = template_dict.get("main_room", {}) as Dictionary
@@ -209,6 +234,10 @@ func _try_place_configured_poi(
 	var main_room_rect: Rect2i = _sample_room_rect(map_data, main_room_cfg, rng, main_room_margin)
 	if main_room_rect.size == Vector2i.ZERO:
 		return false
+	if not target_layer_id.is_empty():
+		var layer: Dictionary = _resolve_layer_for_rect_center(config, map_data, main_room_rect)
+		if str(layer.get("id", "")) != target_layer_id:
+			return false
 	var rooms: Array[Rect2i] = [main_room_rect]
 	var sub_room_count: int = 0
 	var sub_count_min: int = maxi(int(sub_room_cfg.get("count_min", 0)), 0)
@@ -249,17 +278,21 @@ func _try_place_configured_poi(
 		rooms,
 		corridor_plans,
 		template_dict,
+		config,
 		rng
 	)
+	var poi_layer: Dictionary = _resolve_layer_for_rect_center(config, map_data, main_room_rect)
 	map_data.poi_centers.append({
 		"x": center_cell.x,
 		"y": center_cell.y,
 		"type": compat_poi_type,
 		"template_id": str(template_dict.get("id", "")),
+		"layer_id": str(poi_layer.get("id", "")),
 	})
 	map_data.poi_instances.append({
 		"template_id": str(template_dict.get("id", "")),
 		"poi_type": compat_poi_type,
+		"layer_id": str(poi_layer.get("id", "")),
 		"bounds": total_bounds,
 		"main_room": _rect_to_dict(main_room_rect),
 		"sub_rooms": _rect_array_to_dict_array(rooms.slice(1)),
@@ -913,6 +946,7 @@ func _append_room_content_sites(
 				"cell": anchor_cell,
 				"template_id": template_id,
 				"monster_id": str(spawn_template.get("monster_id", "")),
+				"layer_id": str(plan.get("layer_id", "")),
 			})
 		elif content_kind == "nest":
 			var nest_template: Dictionary = _find_template_by_id(nest_templates, template_id)
@@ -930,6 +964,7 @@ func _append_room_content_sites(
 				"spawn_interval_sec": float(nest_template.get("spawn_interval_sec", 0.0)),
 				"max_alive_children": int(nest_template.get("max_alive_children", 0)),
 				"max_hit_points": int(nest_template.get("max_hit_points", 0)),
+				"layer_id": str(plan.get("layer_id", "")),
 			})
 
 
@@ -1041,6 +1076,7 @@ func _build_room_content_plans(
 	rooms: Array[Rect2i],
 	corridor_plans: Array[Dictionary],
 	template_dict: Dictionary,
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator
 ) -> Array[Dictionary]:
 	var content: Dictionary = template_dict.get("content", {}) as Dictionary
@@ -1060,6 +1096,7 @@ func _build_room_content_plans(
 			room_cfg,
 			center_cluster_cfg if room_index == 0 else {},
 			door_cells,
+			config,
 			rng
 		)
 		plans.append(plan)
@@ -1083,6 +1120,7 @@ func _roll_room_content_plan(
 	room_cfg: Dictionary,
 	center_cluster_cfg: Dictionary,
 	door_cells: Array[Vector2i],
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator
 ) -> Dictionary:
 	var none_weight: float = maxf(float(room_cfg.get("none_weight", 0.0)), 0.0)
@@ -1090,6 +1128,15 @@ func _roll_room_content_plan(
 	var nest_entries: Array = room_cfg.get("nest_entries", []) as Array
 	var monster_weight_total: float = _sum_entry_weights(monster_entries)
 	var nest_weight_total: float = _sum_entry_weights(nest_entries)
+	var layer: Dictionary = _resolve_layer_for_rect_center(config, null, room_rect)
+	var danger_multiplier: float = maxf(
+		float(layer.get("room_content_danger_multiplier", 1.0)),
+		0.0
+	)
+	if danger_multiplier > 0.0:
+		monster_weight_total *= danger_multiplier
+		nest_weight_total *= danger_multiplier
+		none_weight = none_weight / danger_multiplier
 	var total_weight: float = none_weight + monster_weight_total + nest_weight_total
 	var content_kind: String = "none"
 	var template_id: String = ""
@@ -1116,6 +1163,7 @@ func _roll_room_content_plan(
 		"content_kind": content_kind,
 		"template_id": template_id,
 		"anchor_cell": anchor_cell,
+		"layer_id": str(layer.get("id", "")),
 	}
 
 
@@ -1570,6 +1618,13 @@ func _generate_minerals(
 			var chance: float = config.mineral_base_chance
 			if _is_exposed_wall(map_data, x, y):
 				chance = config.mineral_exposed_chance
+			chance *= _resolve_layer_weight_for_cell(
+				config,
+				map_data,
+				Vector2i(x, y),
+				"mineral_budget_weight"
+			)
+			chance = clampf(chance, 0.0, 1.0)
 			cell.has_mineral = rng.randf() < chance
 
 
@@ -1604,6 +1659,13 @@ func _generate_mineral_clusters(
 			var chance: float = config.mineral_base_chance
 			if _is_exposed_wall(map_data, x, y):
 				chance = config.mineral_exposed_chance
+			chance *= _resolve_layer_weight_for_cell(
+				config,
+				map_data,
+				Vector2i(x, y),
+				"mineral_budget_weight"
+			)
+			chance = clampf(chance, 0.0, 1.0)
 			if rng.randf() > chance:
 				continue
 			var cluster_template: Dictionary = _pick_cluster_template(config.mineral_cluster_types, rng)
@@ -1885,6 +1947,141 @@ func _is_exposed_wall(map_data: WdcMapGenerationTypes.MapData, x: int, y: int) -
 	return false
 
 
+func _resolve_layer_for_cell(
+	config: WdcMapGenerationTypes.MapConfig,
+	map_data: WdcMapGenerationTypes.MapData,
+	cell: Vector2i
+) -> Dictionary:
+	if config == null or config.map_layers.is_empty():
+		return {}
+	var width: int = map_data.width if map_data != null else config.width
+	var height: int = map_data.height if map_data != null else config.height
+	var center: Vector2 = Vector2((float(width) - 1.0) * 0.5, (float(height) - 1.0) * 0.5)
+	var distance: float = Vector2(float(cell.x), float(cell.y)).distance_to(center)
+	for layer: Dictionary in config.map_layers:
+		if distance <= float(layer.get("max_radius_cells", INF)):
+			return layer
+	return config.map_layers[config.map_layers.size() - 1] as Dictionary
+
+
+func _resolve_layer_for_rect_center(
+	config: WdcMapGenerationTypes.MapConfig,
+	map_data: WdcMapGenerationTypes.MapData,
+	rect: Rect2i
+) -> Dictionary:
+	return _resolve_layer_for_cell(config, map_data, _rect_center_cell(rect))
+
+
+func _is_cell_in_target_layer(
+	config: WdcMapGenerationTypes.MapConfig,
+	map_data: WdcMapGenerationTypes.MapData,
+	cell: Vector2i,
+	target_layer_id: String
+) -> bool:
+	if target_layer_id.is_empty():
+		return true
+	var layer: Dictionary = _resolve_layer_for_cell(config, map_data, cell)
+	return str(layer.get("id", "")) == target_layer_id
+
+
+func _resolve_layer_weight_for_cell(
+	config: WdcMapGenerationTypes.MapConfig,
+	map_data: WdcMapGenerationTypes.MapData,
+	cell: Vector2i,
+	weight_key: String
+) -> float:
+	var layer: Dictionary = _resolve_layer_for_cell(config, map_data, cell)
+	if layer.is_empty():
+		return 1.0
+	return maxf(float(layer.get(weight_key, 1.0)), 0.0)
+
+
+func _split_layer_budget_counts(
+	total_count: int,
+	config: WdcMapGenerationTypes.MapConfig,
+	weight_key: String
+) -> Dictionary:
+	var counts: Dictionary = {}
+	if config == null or config.map_layers.is_empty() or total_count <= 0:
+		return counts
+	var weighted_entries: Array[Dictionary] = []
+	var total_weight: float = 0.0
+	for layer: Dictionary in config.map_layers:
+		var layer_id: String = str(layer.get("id", ""))
+		var weight: float = maxf(float(layer.get(weight_key, 1.0)), 0.0)
+		total_weight += weight
+		weighted_entries.append({
+			"id": layer_id,
+			"weight": weight,
+			"count": 0,
+			"remainder": 0.0,
+		})
+	if total_weight <= 0.0:
+		total_weight = float(weighted_entries.size())
+		for entry: Dictionary in weighted_entries:
+			entry["weight"] = 1.0
+	var assigned: int = 0
+	for entry: Dictionary in weighted_entries:
+		var raw_count: float = float(total_count) * float(entry.get("weight", 0.0)) / total_weight
+		var floored_count: int = int(floor(raw_count))
+		entry["count"] = floored_count
+		entry["remainder"] = raw_count - float(floored_count)
+		assigned += floored_count
+	weighted_entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.get("remainder", 0.0)) > float(b.get("remainder", 0.0))
+	)
+	var remaining: int = maxi(total_count - assigned, 0)
+	var cursor: int = 0
+	while remaining > 0 and not weighted_entries.is_empty():
+		var entry: Dictionary = weighted_entries[cursor % weighted_entries.size()]
+		entry["count"] = int(entry.get("count", 0)) + 1
+		remaining -= 1
+		cursor += 1
+	for entry: Dictionary in weighted_entries:
+		counts[str(entry.get("id", ""))] = int(entry.get("count", 0))
+	return counts
+
+
+func _apply_layer_durability_overrides(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig
+) -> void:
+	if map_data == null or config == null:
+		return
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			if cell == null:
+				continue
+			if not _cell_uses_layer_durability(cell):
+				cell.durability_override_max_hit_points = 0
+				WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+				continue
+			var layer: Dictionary = _resolve_layer_for_cell(config, map_data, Vector2i(x, y))
+			cell.durability_override_max_hit_points = maxi(
+				int(layer.get("stone_max_hit_points", 1)),
+				1
+			)
+			WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+
+
+func _cell_uses_layer_durability(cell: WdcMapGenerationTypes.CellData) -> bool:
+	if cell == null or cell.cell_type != WdcMapGenerationTypes.CellType.WALL:
+		return false
+	if cell.special_block_type == WdcMapGenerationTypes.SpecialBlockType.NONE:
+		return true
+	match cell.special_block_type:
+		WdcMapGenerationTypes.SpecialBlockType.RARE_MINERAL:
+			return true
+		WdcMapGenerationTypes.SpecialBlockType.TURQUOISE:
+			return true
+		WdcMapGenerationTypes.SpecialBlockType.AMETHYST:
+			return true
+		WdcMapGenerationTypes.SpecialBlockType.GOLD:
+			return true
+	return false
+
+
 func _recalculate_stats(map_data: WdcMapGenerationTypes.MapData) -> void:
 	map_data.total_floor = 0
 	map_data.large_pois = 0
@@ -1918,76 +2115,93 @@ func _generate_environmental_traps(
 	rng: RandomNumberGenerator
 ) -> void:
 	var high_density: bool = config.traps_high_density
-	_place_spike_patches(
-		map_data,
-		rng,
-		_resolve_trap_count(
-			config.traps_spike_max_count,
-			TRAP_SPIKE_PATCH_COUNT,
-			TRAP_SPIKE_PATCH_COUNT * 4 if high_density else TRAP_SPIKE_PATCH_COUNT
-		),
-		_resolve_trap_spacing(
-			config.traps_spike_min_spacing,
-			TRAP_SPIKE_PATCH_SPACING,
-			max(2, TRAP_SPIKE_PATCH_SPACING - 2) if high_density else TRAP_SPIKE_PATCH_SPACING
-		)
+	var spike_count: int = _resolve_trap_count(
+		config.traps_spike_max_count,
+		TRAP_SPIKE_PATCH_COUNT,
+		TRAP_SPIKE_PATCH_COUNT * 4 if high_density else TRAP_SPIKE_PATCH_COUNT
 	)
-	_place_explosive_ore_chains(
-		map_data,
-		rng,
-		_resolve_trap_count(
-			config.traps_explosive_chain_count,
-			TRAP_EXPLOSIVE_ORE_CHAIN_COUNT,
-			TRAP_EXPLOSIVE_ORE_CHAIN_COUNT * 4 if high_density else TRAP_EXPLOSIVE_ORE_CHAIN_COUNT
-		),
-		_resolve_trap_spacing(
-			config.traps_explosive_chain_spacing,
-			TRAP_EXPLOSIVE_ORE_CHAIN_SPACING,
-			max(2, TRAP_EXPLOSIVE_ORE_CHAIN_SPACING - 4) if high_density else TRAP_EXPLOSIVE_ORE_CHAIN_SPACING
-		)
+	var explosive_count: int = _resolve_trap_count(
+		config.traps_explosive_chain_count,
+		TRAP_EXPLOSIVE_ORE_CHAIN_COUNT,
+		TRAP_EXPLOSIVE_ORE_CHAIN_COUNT * 4 if high_density else TRAP_EXPLOSIVE_ORE_CHAIN_COUNT
 	)
-	_place_arrow_slits(
-		map_data,
-		rng,
-		_resolve_trap_count(
-			config.traps_arrow_slit_max_count,
-			TRAP_ARROW_SLIT_MAX_COUNT,
-			TRAP_ARROW_SLIT_MAX_COUNT * 3 if high_density else TRAP_ARROW_SLIT_MAX_COUNT
-		),
-		_resolve_trap_spacing(
-			config.traps_arrow_slit_min_spacing,
-			TRAP_ARROW_SLIT_MIN_SPACING,
-			max(1, TRAP_ARROW_SLIT_MIN_SPACING - 1) if high_density else TRAP_ARROW_SLIT_MIN_SPACING
-		)
+	var arrow_count: int = _resolve_trap_count(
+		config.traps_arrow_slit_max_count,
+		TRAP_ARROW_SLIT_MAX_COUNT,
+		TRAP_ARROW_SLIT_MAX_COUNT * 3 if high_density else TRAP_ARROW_SLIT_MAX_COUNT
 	)
-	_place_mimic_ores(
-		map_data,
-		rng,
-		_resolve_trap_count(
-			config.traps_mimic_ore_max_count,
-			TRAP_MIMIC_ORE_MAX_COUNT,
-			TRAP_MIMIC_ORE_MAX_COUNT * 3 if high_density else TRAP_MIMIC_ORE_MAX_COUNT
-		),
-		_resolve_trap_spacing(
-			config.traps_mimic_ore_min_spacing,
-			TRAP_MIMIC_ORE_MIN_SPACING,
-			max(2, TRAP_MIMIC_ORE_MIN_SPACING - 2) if high_density else TRAP_MIMIC_ORE_MIN_SPACING
-		)
+	var mimic_count: int = _resolve_trap_count(
+		config.traps_mimic_ore_max_count,
+		TRAP_MIMIC_ORE_MAX_COUNT,
+		TRAP_MIMIC_ORE_MAX_COUNT * 3 if high_density else TRAP_MIMIC_ORE_MAX_COUNT
 	)
-	_place_pressure_plates(
-		map_data,
-		rng,
-		_resolve_trap_count(
-			config.traps_pressure_plate_max_count,
-			TRAP_PRESSURE_PLATE_MAX_COUNT,
-			TRAP_PRESSURE_PLATE_MAX_COUNT * 4 if high_density else TRAP_PRESSURE_PLATE_MAX_COUNT
-		),
-		_resolve_trap_spacing(
-			config.traps_pressure_plate_min_spacing,
-			TRAP_PRESSURE_PLATE_MIN_SPACING,
-			max(2, TRAP_PRESSURE_PLATE_MIN_SPACING - 2) if high_density else TRAP_PRESSURE_PLATE_MIN_SPACING
-		)
+	var plate_count: int = _resolve_trap_count(
+		config.traps_pressure_plate_max_count,
+		TRAP_PRESSURE_PLATE_MAX_COUNT,
+		TRAP_PRESSURE_PLATE_MAX_COUNT * 4 if high_density else TRAP_PRESSURE_PLATE_MAX_COUNT
 	)
+	for layer: Dictionary in config.map_layers:
+		var layer_id: String = str(layer.get("id", ""))
+		_place_spike_patches(
+			map_data,
+			config,
+			rng,
+			int(_split_layer_budget_counts(spike_count, config, "trap_budget_weight").get(layer_id, 0)),
+			_resolve_trap_spacing(
+				config.traps_spike_min_spacing,
+				TRAP_SPIKE_PATCH_SPACING,
+				max(2, TRAP_SPIKE_PATCH_SPACING - 2) if high_density else TRAP_SPIKE_PATCH_SPACING
+			),
+			layer_id
+		)
+		_place_explosive_ore_chains(
+			map_data,
+			config,
+			rng,
+			int(_split_layer_budget_counts(explosive_count, config, "trap_budget_weight").get(layer_id, 0)),
+			_resolve_trap_spacing(
+				config.traps_explosive_chain_spacing,
+				TRAP_EXPLOSIVE_ORE_CHAIN_SPACING,
+				max(2, TRAP_EXPLOSIVE_ORE_CHAIN_SPACING - 4) if high_density else TRAP_EXPLOSIVE_ORE_CHAIN_SPACING
+			),
+			layer_id
+		)
+		_place_arrow_slits(
+			map_data,
+			config,
+			rng,
+			int(_split_layer_budget_counts(arrow_count, config, "trap_budget_weight").get(layer_id, 0)),
+			_resolve_trap_spacing(
+				config.traps_arrow_slit_min_spacing,
+				TRAP_ARROW_SLIT_MIN_SPACING,
+				max(1, TRAP_ARROW_SLIT_MIN_SPACING - 1) if high_density else TRAP_ARROW_SLIT_MIN_SPACING
+			),
+			layer_id
+		)
+		_place_mimic_ores(
+			map_data,
+			config,
+			rng,
+			int(_split_layer_budget_counts(mimic_count, config, "trap_budget_weight").get(layer_id, 0)),
+			_resolve_trap_spacing(
+				config.traps_mimic_ore_min_spacing,
+				TRAP_MIMIC_ORE_MIN_SPACING,
+				max(2, TRAP_MIMIC_ORE_MIN_SPACING - 2) if high_density else TRAP_MIMIC_ORE_MIN_SPACING
+			),
+			layer_id
+		)
+		_place_pressure_plates(
+			map_data,
+			config,
+			rng,
+			int(_split_layer_budget_counts(plate_count, config, "trap_budget_weight").get(layer_id, 0)),
+			_resolve_trap_spacing(
+				config.traps_pressure_plate_min_spacing,
+				TRAP_PRESSURE_PLATE_MIN_SPACING,
+				max(2, TRAP_PRESSURE_PLATE_MIN_SPACING - 2) if high_density else TRAP_PRESSURE_PLATE_MIN_SPACING
+			),
+			layer_id
+		)
 
 
 # 解析陷阱数量参数：显式 >= 0 时用显式值；否则用 fallback（高密度模式或默认）。
@@ -2005,10 +2219,14 @@ func _resolve_trap_spacing(explicit_value: int, _default_value: int, fallback_va
 
 func _place_spike_patches(
 	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator,
 	max_count: int = TRAP_SPIKE_PATCH_COUNT,
-	spacing: int = TRAP_SPIKE_PATCH_SPACING
+	spacing: int = TRAP_SPIKE_PATCH_SPACING,
+	target_layer_id: String = ""
 ) -> void:
+	if max_count <= 0:
+		return
 	var floor_cells: Array[Vector2i] = []
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
@@ -2018,6 +2236,8 @@ func _place_spike_patches(
 			if cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
 				continue
 			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
+				continue
+			if not _is_cell_in_target_layer(config, map_data, Vector2i(x, y), target_layer_id):
 				continue
 			floor_cells.append(Vector2i(x, y))
 	if floor_cells.is_empty():
@@ -2041,7 +2261,8 @@ func _place_spike_patches(
 			map_data.trap_sites.append({
 				"trap_kind": "spike",
 				"cell": _vector2i_to_dict(patch_cell),
-				"metadata": {}
+				"metadata": {},
+				"layer_id": target_layer_id,
 			})
 		patches_placed += 1
 
@@ -2106,10 +2327,14 @@ const TRAP_EXPLOSIVE_ORE_CHAIN_SPACING: int = 8
 
 func _place_explosive_ore_chains(
 	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator,
 	max_count: int = TRAP_EXPLOSIVE_ORE_CHAIN_COUNT,
-	spacing: int = TRAP_EXPLOSIVE_ORE_CHAIN_SPACING
+	spacing: int = TRAP_EXPLOSIVE_ORE_CHAIN_SPACING,
+	target_layer_id: String = ""
 ) -> void:
+	if max_count <= 0:
+		return
 	var wall_cells: Array[Vector2i] = []
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
@@ -2119,6 +2344,8 @@ func _place_explosive_ore_chains(
 			if cell.cell_type != WdcMapGenerationTypes.CellType.WALL:
 				continue
 			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
+				continue
+			if not _is_cell_in_target_layer(config, map_data, Vector2i(x, y), target_layer_id):
 				continue
 			wall_cells.append(Vector2i(x, y))
 	if wall_cells.is_empty():
@@ -2152,7 +2379,8 @@ func _place_explosive_ore_chains(
 		map_data.trap_sites.append({
 			"trap_kind": "explosive_ore_chain",
 			"nodes": chain_node_dicts,
-			"metadata": {}
+			"metadata": {},
+			"layer_id": target_layer_id,
 		})
 		chains_placed += 1
 
@@ -2206,10 +2434,14 @@ const TRAP_PRESSURE_PLATE_MIN_SPACING: int = 4
 
 func _place_pressure_plates(
 	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator,
 	max_count: int = TRAP_PRESSURE_PLATE_MAX_COUNT,
-	spacing: int = TRAP_PRESSURE_PLATE_MIN_SPACING
+	spacing: int = TRAP_PRESSURE_PLATE_MIN_SPACING,
+	target_layer_id: String = ""
 ) -> void:
+	if max_count <= 0:
+		return
 	var floor_cells: Array[Vector2i] = []
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
@@ -2219,6 +2451,8 @@ func _place_pressure_plates(
 			if cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
 				continue
 			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
+				continue
+			if not _is_cell_in_target_layer(config, map_data, Vector2i(x, y), target_layer_id):
 				continue
 			floor_cells.append(Vector2i(x, y))
 	if floor_cells.is_empty():
@@ -2244,17 +2478,22 @@ func _place_pressure_plates(
 		map_data.trap_sites.append({
 			"trap_kind": "pressure_plate",
 			"cell": _vector2i_to_dict(candidate_cell),
-			"metadata": {}
+			"metadata": {},
+			"layer_id": target_layer_id,
 		})
 		plates_placed += 1
 
 
 func _place_mimic_ores(
 	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator,
 	max_count: int = TRAP_MIMIC_ORE_MAX_COUNT,
-	spacing: int = TRAP_MIMIC_ORE_MIN_SPACING
+	spacing: int = TRAP_MIMIC_ORE_MIN_SPACING,
+	target_layer_id: String = ""
 ) -> void:
+	if max_count <= 0:
+		return
 	var mineral_cells: Array[Vector2i] = []
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
@@ -2266,6 +2505,8 @@ func _place_mimic_ores(
 			if not cell.has_mineral:
 				continue
 			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
+				continue
+			if not _is_cell_in_target_layer(config, map_data, Vector2i(x, y), target_layer_id):
 				continue
 			mineral_cells.append(Vector2i(x, y))
 	if mineral_cells.is_empty():
@@ -2290,17 +2531,22 @@ func _place_mimic_ores(
 		map_data.trap_sites.append({
 			"trap_kind": "mimic_ore",
 			"cell": _vector2i_to_dict(candidate_cell),
-			"metadata": metadata
+			"metadata": metadata,
+			"layer_id": target_layer_id,
 		})
 		mimics_placed += 1
 
 
 func _place_arrow_slits(
 	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
 	rng: RandomNumberGenerator,
 	max_count: int = TRAP_ARROW_SLIT_MAX_COUNT,
-	spacing: int = TRAP_ARROW_SLIT_MIN_SPACING
+	spacing: int = TRAP_ARROW_SLIT_MIN_SPACING,
+	target_layer_id: String = ""
 ) -> void:
+	if max_count <= 0:
+		return
 	var poi_wall_cells: Array[Vector2i] = []
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
@@ -2308,6 +2554,8 @@ func _place_arrow_slits(
 			if cell == null:
 				continue
 			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.POI_WALL:
+				continue
+			if not _is_cell_in_target_layer(config, map_data, Vector2i(x, y), target_layer_id):
 				continue
 			poi_wall_cells.append(Vector2i(x, y))
 	if poi_wall_cells.is_empty():
@@ -2339,7 +2587,8 @@ func _place_arrow_slits(
 			"metadata": {
 				"facing_x": facing_direction.x,
 				"facing_y": facing_direction.y
-			}
+			},
+			"layer_id": target_layer_id,
 		})
 		slits_placed += 1
 
