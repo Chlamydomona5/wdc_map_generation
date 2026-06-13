@@ -34,7 +34,12 @@
       "poi_budget_weight": 2.0,
       "trap_budget_weight": 2.0,
       "monster_budget_weight": 2.0,
-      "room_content_danger_multiplier": 1.5
+      "room_content_danger_multiplier": 1.5,
+      "boundary_noise_amplitude_cells": 4.0,
+      "boundary_noise_scale_cells": 14.0,
+      "boundary_noise_octaves": 3,
+      "boundary_noise_persistence": 0.5,
+      "boundary_noise_seed_offset": 11
     },
     {
       "id": "middle",
@@ -44,7 +49,12 @@
       "poi_budget_weight": 1.25,
       "trap_budget_weight": 1.25,
       "monster_budget_weight": 1.25,
-      "room_content_danger_multiplier": 1.15
+      "room_content_danger_multiplier": 1.15,
+      "boundary_noise_amplitude_cells": 5.0,
+      "boundary_noise_scale_cells": 18.0,
+      "boundary_noise_octaves": 3,
+      "boundary_noise_persistence": 0.5,
+      "boundary_noise_seed_offset": 29
     },
     {
       "id": "outer",

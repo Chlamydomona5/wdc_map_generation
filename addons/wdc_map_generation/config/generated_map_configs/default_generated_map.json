@@ -27,6 +27,11 @@
   },
   "map_layers": [
     {
+      "boundary_noise_amplitude_cells": 5.0,
+      "boundary_noise_octaves": 3.0,
+      "boundary_noise_persistence": 0.5,
+      "boundary_noise_scale_cells": 25.0,
+      "boundary_noise_seed_offset": 11.0,
       "id": "inner",
       "max_radius_ratio": 0.300000000046566,
       "mineral_budget_weight": 3.0,
@@ -37,6 +42,11 @@
       "trap_budget_weight": 3.0
     },
     {
+      "boundary_noise_amplitude_cells": 7.0,
+      "boundary_noise_octaves": 3.0,
+      "boundary_noise_persistence": 0.5,
+      "boundary_noise_scale_cells": 24.0,
+      "boundary_noise_seed_offset": 29.0,
       "id": "middle",
       "max_radius_ratio": 0.550000000046566,
       "mineral_budget_weight": 1.0,

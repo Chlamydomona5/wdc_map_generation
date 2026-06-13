@@ -1959,9 +1959,85 @@ func _resolve_layer_for_cell(
 	var center: Vector2 = Vector2((float(width) - 1.0) * 0.5, (float(height) - 1.0) * 0.5)
 	var distance: float = Vector2(float(cell.x), float(cell.y)).distance_to(center)
 	for layer: Dictionary in config.map_layers:
-		if distance <= float(layer.get("max_radius_cells", INF)):
+		if distance <= _resolve_layer_boundary_radius(config, layer, cell):
 			return layer
 	return config.map_layers[config.map_layers.size() - 1] as Dictionary
+
+
+func _resolve_layer_boundary_radius(
+	config: WdcMapGenerationTypes.MapConfig,
+	layer: Dictionary,
+	cell: Vector2i
+) -> float:
+	var base_radius: float = float(layer.get("max_radius_cells", INF))
+	var amplitude: float = maxf(float(layer.get("boundary_noise_amplitude_cells", 0.0)), 0.0)
+	if amplitude <= 0.0:
+		return base_radius
+	var scale_cells: float = maxf(float(layer.get("boundary_noise_scale_cells", 16.0)), 1.0)
+	var octaves: int = clampi(int(layer.get("boundary_noise_octaves", 1)), 1, 6)
+	var persistence: float = clampf(float(layer.get("boundary_noise_persistence", 0.5)), 0.0, 1.0)
+	var base_seed: int = last_resolved_seed if last_resolved_seed != 0 else maxi(config.seed, 1)
+	var seed: int = base_seed + int(layer.get("boundary_noise_seed_offset", 0))
+	return base_radius + _sample_layer_boundary_noise(cell, scale_cells, octaves, persistence, seed) * amplitude
+
+
+func _sample_layer_boundary_noise(
+	cell: Vector2i,
+	scale_cells: float,
+	octaves: int,
+	persistence: float,
+	seed: int
+) -> float:
+	var total: float = 0.0
+	var amplitude: float = 1.0
+	var amplitude_sum: float = 0.0
+	var frequency: float = 1.0
+	for octave: int in range(octaves):
+		total += _sample_value_noise_2d(
+			float(cell.x) * frequency / scale_cells,
+			float(cell.y) * frequency / scale_cells,
+			seed + octave * 1013
+		) * amplitude
+		amplitude_sum += amplitude
+		frequency *= 2.0
+		amplitude *= persistence
+	if amplitude_sum <= 0.0:
+		return 0.0
+	return total / amplitude_sum
+
+
+func _sample_value_noise_2d(sample_x: float, sample_y: float, seed: int) -> float:
+	var x0: int = int(floor(sample_x))
+	var y0: int = int(floor(sample_y))
+	var x1: int = x0 + 1
+	var y1: int = y0 + 1
+	var tx: float = _smooth_noise_step(sample_x - float(x0))
+	var ty: float = _smooth_noise_step(sample_y - float(y0))
+	var top: float = lerpf(
+		_hash_noise_2d(x0, y0, seed),
+		_hash_noise_2d(x1, y0, seed),
+		tx
+	)
+	var bottom: float = lerpf(
+		_hash_noise_2d(x0, y1, seed),
+		_hash_noise_2d(x1, y1, seed),
+		tx
+	)
+	return lerpf(top, bottom, ty)
+
+
+func _smooth_noise_step(value: float) -> float:
+	var clamped_value: float = clampf(value, 0.0, 1.0)
+	return clamped_value * clamped_value * (3.0 - 2.0 * clamped_value)
+
+
+func _hash_noise_2d(x: int, y: int, seed: int) -> float:
+	var seed_value: int = abs(seed) % 104729
+	var raw_value: float = sin(
+		float(x) * 127.1 + float(y) * 311.7 + float(seed_value) * 74.7
+	) * 43758.5453123
+	var unit_value: float = raw_value - floor(raw_value)
+	return unit_value * 2.0 - 1.0
 
 
 func _resolve_layer_for_rect_center(

@@ -180,6 +180,11 @@ class MapConfig:
 				"trap_budget_weight": 2.0,
 				"monster_budget_weight": 2.0,
 				"room_content_danger_multiplier": 1.5,
+				"boundary_noise_amplitude_cells": 0.0,
+				"boundary_noise_scale_cells": 16.0,
+				"boundary_noise_octaves": 1,
+				"boundary_noise_persistence": 0.5,
+				"boundary_noise_seed_offset": 0,
 			},
 			{
 				"id": "middle",
@@ -190,6 +195,11 @@ class MapConfig:
 				"trap_budget_weight": 1.25,
 				"monster_budget_weight": 1.25,
 				"room_content_danger_multiplier": 1.15,
+				"boundary_noise_amplitude_cells": 0.0,
+				"boundary_noise_scale_cells": 16.0,
+				"boundary_noise_octaves": 1,
+				"boundary_noise_persistence": 0.5,
+				"boundary_noise_seed_offset": 0,
 			},
 			{
 				"id": "outer",
@@ -200,6 +210,11 @@ class MapConfig:
 				"trap_budget_weight": 0.75,
 				"monster_budget_weight": 0.75,
 				"room_content_danger_multiplier": 0.85,
+				"boundary_noise_amplitude_cells": 0.0,
+				"boundary_noise_scale_cells": 16.0,
+				"boundary_noise_octaves": 1,
+				"boundary_noise_persistence": 0.5,
+				"boundary_noise_seed_offset": 0,
 			},
 		]
 		var by_id: Dictionary = {}
@@ -226,6 +241,27 @@ class MapConfig:
 			merged["room_content_danger_multiplier"] = maxf(
 				float(merged.get("room_content_danger_multiplier", 1.0)),
 				0.0
+			)
+			merged["boundary_noise_amplitude_cells"] = maxf(
+				float(merged.get("boundary_noise_amplitude_cells", 0.0)),
+				0.0
+			)
+			merged["boundary_noise_scale_cells"] = maxf(
+				float(merged.get("boundary_noise_scale_cells", 16.0)),
+				1.0
+			)
+			merged["boundary_noise_octaves"] = clampi(
+				int(merged.get("boundary_noise_octaves", 1)),
+				1,
+				6
+			)
+			merged["boundary_noise_persistence"] = clampf(
+				float(merged.get("boundary_noise_persistence", 0.5)),
+				0.0,
+				1.0
+			)
+			merged["boundary_noise_seed_offset"] = int(
+				merged.get("boundary_noise_seed_offset", 0)
 			)
 			normalized.append(merged)
 		normalized.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:

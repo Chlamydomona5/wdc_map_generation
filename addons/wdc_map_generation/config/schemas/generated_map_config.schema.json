@@ -39,7 +39,12 @@
           "poi_budget_weight": { "type": "number", "minimum": 0 },
           "trap_budget_weight": { "type": "number", "minimum": 0 },
           "monster_budget_weight": { "type": "number", "minimum": 0 },
-          "room_content_danger_multiplier": { "type": "number", "minimum": 0 }
+          "room_content_danger_multiplier": { "type": "number", "minimum": 0 },
+          "boundary_noise_amplitude_cells": { "type": "number", "minimum": 0 },
+          "boundary_noise_scale_cells": { "type": "number", "minimum": 1 },
+          "boundary_noise_octaves": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "boundary_noise_persistence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "boundary_noise_seed_offset": { "type": "integer" }
         },
         "anyOf": [
           { "required": ["max_radius_cells"] },

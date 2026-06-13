@@ -485,6 +485,32 @@ static func _normalize_map_layers(layer_values: Variant) -> Array[Dictionary]:
 			float(layer_dict.get("room_content_danger_multiplier", 1.0)),
 			0.0
 		)
+		if layer_dict.has("boundary_noise_amplitude_cells"):
+			layer_dict["boundary_noise_amplitude_cells"] = maxf(
+				float(layer_dict["boundary_noise_amplitude_cells"]),
+				0.0
+			)
+		if layer_dict.has("boundary_noise_scale_cells"):
+			layer_dict["boundary_noise_scale_cells"] = maxf(
+				float(layer_dict["boundary_noise_scale_cells"]),
+				1.0
+			)
+		if layer_dict.has("boundary_noise_octaves"):
+			layer_dict["boundary_noise_octaves"] = clampi(
+				int(layer_dict["boundary_noise_octaves"]),
+				1,
+				6
+			)
+		if layer_dict.has("boundary_noise_persistence"):
+			layer_dict["boundary_noise_persistence"] = clampf(
+				float(layer_dict["boundary_noise_persistence"]),
+				0.0,
+				1.0
+			)
+		if layer_dict.has("boundary_noise_seed_offset"):
+			layer_dict["boundary_noise_seed_offset"] = int(
+				layer_dict["boundary_noise_seed_offset"]
+			)
 		normalized.append(layer_dict)
 	return normalized
 
