@@ -40,13 +40,14 @@ func build_server_payload(map_data: WdcMapGenerationTypes.MapData) -> WdcMapGene
 
 func _build_server_payload_with_rng(
 	map_data: WdcMapGenerationTypes.MapData,
-	rng: RandomNumberGenerator
+	_rng: RandomNumberGenerator
 ) -> WdcMapGenerationTypes.MapServerPayload:
 	var payload: WdcMapGenerationTypes.MapServerPayload = WdcMapGenerationTypes.MapServerPayload.new()
 	payload.width = map_data.width
 	payload.height = map_data.height
 	payload.tile_matrix = _build_server_tile_matrix(map_data)
-	payload.player_spawn_points = _generate_player_spawn_points(map_data, rng, 2)
+	payload.player_spawn_points = map_data.player_spawn_points.duplicate(true)
+	payload.extraction_sites = map_data.extraction_sites.duplicate(true)
 	return payload
 
 
@@ -79,6 +80,7 @@ func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapsho
 	_generate_environmental_traps(map_data, normalized_config, rng)
 	_emit_stage(snapshots, STAGE_TRAP, map_data, "TRAP", capture_snapshots)
 	_apply_layer_durability_overrides(map_data, normalized_config)
+	_generate_spawn_and_extraction_sites(map_data, normalized_config)
 	_recalculate_stats(map_data)
 	_emit_stage(snapshots, STAGE_MINERAL, map_data, "MINERAL", capture_snapshots)
 	return {
@@ -2838,6 +2840,434 @@ func _sanitize_direction(dir: Vector2i, rng: RandomNumberGenerator) -> Vector2i:
 	return Vector2i(sx, sy)
 
 
+func _generate_spawn_and_extraction_sites(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig
+) -> void:
+	if map_data == null or config == null:
+		return
+	map_data.player_spawn_points.clear()
+	map_data.extraction_sites.clear()
+	var empty_avoid_cells: Array[Vector2i] = []
+	var spawn_cells: Array[Vector2i] = _select_layer_site_cells(
+		map_data,
+		config,
+		config.player_spawn_layer_id,
+		config.player_spawn_count,
+		config.player_spawn_edge_margin_cells,
+		config.player_spawn_clearance_radius_cells,
+		config.player_spawn_min_clearance_ratio,
+		config.player_spawn_min_distance_between_spawns_cells,
+		empty_avoid_cells,
+		0.0,
+		"player_spawn"
+	)
+	for spawn_cell: Vector2i in spawn_cells:
+		map_data.player_spawn_points.append(
+			_build_site_entry(map_data, config, spawn_cell, "player_spawn", config.player_spawn_layer_id)
+		)
+	var reserved_cells: Array[Vector2i] = _duplicate_vector2i_array(spawn_cells)
+	var extraction_layer_counts: Array[Dictionary] = _resolve_site_layer_count_entries(
+		config.extraction_site_count,
+		config.extraction_site_layer_distribution
+	)
+	for layer_count_entry: Dictionary in extraction_layer_counts:
+		var layer_id: String = str(layer_count_entry.get("layer_id", ""))
+		var target_count: int = int(layer_count_entry.get("count", 0))
+		if target_count <= 0:
+			continue
+		var extraction_cells: Array[Vector2i] = _select_layer_site_cells(
+			map_data,
+			config,
+			layer_id,
+			target_count,
+			config.extraction_site_edge_margin_cells,
+			config.extraction_site_clearance_radius_cells,
+			config.extraction_site_min_clearance_ratio,
+			config.extraction_site_min_distance_between_sites_cells,
+			reserved_cells,
+			config.extraction_site_min_distance_from_player_spawns_cells,
+			"extraction"
+		)
+		for extraction_cell: Vector2i in extraction_cells:
+			map_data.extraction_sites.append(
+				_build_site_entry(map_data, config, extraction_cell, "extraction", layer_id)
+			)
+			reserved_cells.append(extraction_cell)
+
+
+func _select_layer_site_cells(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	target_layer_id: String,
+	target_count: int,
+	edge_margin_cells: int,
+	clearance_radius_cells: int,
+	min_clearance_ratio: float,
+	min_distance_between_sites_cells: float,
+	avoid_cells: Array[Vector2i],
+	min_distance_from_avoid_cells: float,
+	site_kind: String
+) -> Array[Vector2i]:
+	var selected_cells: Array[Vector2i] = []
+	if map_data == null or target_count <= 0:
+		return selected_cells
+	var layer_id: String = target_layer_id.strip_edges()
+	var candidates: Array[Dictionary] = _collect_layer_site_candidates(
+		map_data,
+		config,
+		layer_id,
+		edge_margin_cells,
+		clearance_radius_cells,
+		min_clearance_ratio,
+		avoid_cells,
+		min_distance_from_avoid_cells
+	)
+	if candidates.is_empty():
+		return selected_cells
+	var used_keys: Dictionary = _cell_key_lookup(avoid_cells)
+	var passes: Array[Dictionary] = [
+		{
+			"require_floor": true,
+			"require_clearance": true,
+			"require_avoid_distance": true,
+			"enforce_between_distance": true,
+			"fallback_reason": "",
+		},
+		{
+			"require_floor": true,
+			"require_clearance": false,
+			"require_avoid_distance": true,
+			"enforce_between_distance": true,
+			"fallback_reason": "relaxed_clearance",
+		},
+		{
+			"require_floor": true,
+			"require_clearance": false,
+			"require_avoid_distance": false,
+			"enforce_between_distance": true,
+			"fallback_reason": "relaxed_source_distance",
+		},
+		{
+			"require_floor": false,
+			"require_clearance": false,
+			"require_avoid_distance": false,
+			"enforce_between_distance": false,
+			"fallback_reason": "carved_layer_cell",
+		},
+	]
+	for pass_config: Dictionary in passes:
+		_append_site_cells_from_pass(
+			map_data,
+			candidates,
+			selected_cells,
+			used_keys,
+			target_count,
+			min_distance_between_sites_cells,
+			bool(pass_config.get("require_floor", true)),
+			bool(pass_config.get("require_clearance", true)),
+			bool(pass_config.get("require_avoid_distance", true)),
+			bool(pass_config.get("enforce_between_distance", true)),
+			str(pass_config.get("fallback_reason", "")),
+			site_kind
+		)
+		if selected_cells.size() >= target_count:
+			break
+	return selected_cells
+
+
+func _collect_layer_site_candidates(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	target_layer_id: String,
+	edge_margin_cells: int,
+	clearance_radius_cells: int,
+	min_clearance_ratio: float,
+	avoid_cells: Array[Vector2i],
+	min_distance_from_avoid_cells: float
+) -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	var min_avoid_distance_sq: float = min_distance_from_avoid_cells * min_distance_from_avoid_cells
+	var resolved_edge_margin: int = maxi(edge_margin_cells, 0)
+	var center: Vector2 = Vector2((float(map_data.width) - 1.0) * 0.5, (float(map_data.height) - 1.0) * 0.5)
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			if (
+				x < resolved_edge_margin
+				or y < resolved_edge_margin
+				or x >= map_data.width - resolved_edge_margin
+				or y >= map_data.height - resolved_edge_margin
+			):
+				continue
+			var cell_coord: Vector2i = Vector2i(x, y)
+			var layer: Dictionary = _resolve_layer_for_cell(config, map_data, cell_coord)
+			var layer_id: String = str(layer.get("id", ""))
+			if not target_layer_id.is_empty() and layer_id != target_layer_id:
+				continue
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			var is_clean_floor: bool = _is_site_floor_cell(cell)
+			var clearance_ratio: float = _compute_site_clearance_ratio(
+				map_data,
+				cell_coord,
+				clearance_radius_cells
+			)
+			var avoid_distance_ok: bool = true
+			if not avoid_cells.is_empty() and min_avoid_distance_sq > 0.0:
+				for avoid_cell: Vector2i in avoid_cells:
+					var candidate_point: Vector2 = Vector2(float(cell_coord.x), float(cell_coord.y))
+					var avoid_point: Vector2 = Vector2(float(avoid_cell.x), float(avoid_cell.y))
+					if candidate_point.distance_squared_to(avoid_point) < min_avoid_distance_sq:
+						avoid_distance_ok = false
+						break
+			candidates.append({
+				"cell": cell_coord,
+				"layer_id": layer_id,
+				"is_floor": is_clean_floor,
+				"clearance_ok": clearance_ratio >= min_clearance_ratio,
+				"avoid_distance_ok": avoid_distance_ok,
+				"clearance_ratio": clearance_ratio,
+				"center_distance_sq": Vector2(float(x), float(y)).distance_squared_to(center),
+				"tie": _stable_site_tie_breaker(cell_coord, target_layer_id),
+			})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var clearance_delta: float = float(b.get("clearance_ratio", 0.0)) - float(a.get("clearance_ratio", 0.0))
+		if absf(clearance_delta) > 0.0001:
+			return float(a.get("clearance_ratio", 0.0)) > float(b.get("clearance_ratio", 0.0))
+		var target_is_outer: bool = target_layer_id == "outer"
+		var a_distance: float = float(a.get("center_distance_sq", 0.0))
+		var b_distance: float = float(b.get("center_distance_sq", 0.0))
+		if absf(a_distance - b_distance) > 0.0001:
+			return a_distance > b_distance if target_is_outer else a_distance < b_distance
+		return int(a.get("tie", 0)) < int(b.get("tie", 0))
+	)
+	return candidates
+
+
+func _append_site_cells_from_pass(
+	map_data: WdcMapGenerationTypes.MapData,
+	candidates: Array[Dictionary],
+	selected_cells: Array[Vector2i],
+	used_keys: Dictionary,
+	target_count: int,
+	min_distance_between_sites_cells: float,
+	require_floor: bool,
+	require_clearance: bool,
+	require_avoid_distance: bool,
+	enforce_between_distance: bool,
+	fallback_reason: String,
+	site_kind: String
+) -> void:
+	var min_between_sq: float = min_distance_between_sites_cells * min_distance_between_sites_cells
+	for candidate: Dictionary in candidates:
+		if selected_cells.size() >= target_count:
+			return
+		if require_floor and not bool(candidate.get("is_floor", false)):
+			continue
+		if require_clearance and not bool(candidate.get("clearance_ok", false)):
+			continue
+		if require_avoid_distance and not bool(candidate.get("avoid_distance_ok", false)):
+			continue
+		var cell: Vector2i = candidate.get("cell", Vector2i(-1, -1))
+		var key: String = _key(cell.x, cell.y)
+		if bool(used_keys.get(key, false)):
+			continue
+		if enforce_between_distance and min_between_sq > 0.0:
+			var too_close: bool = false
+			for selected_cell: Vector2i in selected_cells:
+				var candidate_point: Vector2 = Vector2(float(cell.x), float(cell.y))
+				var selected_point: Vector2 = Vector2(float(selected_cell.x), float(selected_cell.y))
+				if candidate_point.distance_squared_to(selected_point) < min_between_sq:
+					too_close = true
+					break
+			if too_close:
+				continue
+		if not bool(candidate.get("is_floor", false)):
+			_carve_site_floor_cell(map_data, cell)
+		used_keys[key] = true
+		selected_cells.append(cell)
+		if not fallback_reason.is_empty():
+			_record_site_fallback_reason(map_data, cell, site_kind, fallback_reason)
+
+
+func _build_site_entry(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	cell: Vector2i,
+	site_kind: String,
+	requested_layer_id: String
+) -> Dictionary:
+	var layer: Dictionary = _resolve_layer_for_cell(config, map_data, cell)
+	var entry: Dictionary = {
+		"x": cell.x,
+		"y": cell.y,
+		"site_kind": site_kind,
+		"layer_id": str(layer.get("id", "")),
+		"requested_layer_id": requested_layer_id,
+	}
+	var fallback_key: String = _site_fallback_meta_key(site_kind, cell)
+	if map_data.has_meta(fallback_key):
+		entry["fallback_reason"] = str(map_data.get_meta(fallback_key))
+	return entry
+
+
+func _record_site_fallback_reason(
+	map_data: WdcMapGenerationTypes.MapData,
+	cell: Vector2i,
+	site_kind: String,
+	fallback_reason: String
+) -> void:
+	if map_data == null or fallback_reason.is_empty():
+		return
+	map_data.set_meta(_site_fallback_meta_key(site_kind, cell), fallback_reason)
+
+
+func _site_fallback_meta_key(site_kind: String, cell: Vector2i) -> String:
+	return "%s_%d_%d" % [site_kind, cell.x, cell.y]
+
+
+func _is_site_floor_cell(cell: WdcMapGenerationTypes.CellData) -> bool:
+	return (
+		cell != null
+		and cell.cell_type == WdcMapGenerationTypes.CellType.FLOOR
+		and cell.special_block_type == WdcMapGenerationTypes.SpecialBlockType.NONE
+	)
+
+
+func _carve_site_floor_cell(
+	map_data: WdcMapGenerationTypes.MapData,
+	cell_coord: Vector2i
+) -> void:
+	if map_data == null or not map_data.is_in_bounds(cell_coord.x, cell_coord.y):
+		return
+	var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(cell_coord.x, cell_coord.y)
+	if cell == null:
+		return
+	cell.cell_type = WdcMapGenerationTypes.CellType.FLOOR
+	cell.has_mineral = false
+	cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.NONE
+	cell.poi_type = WdcMapGenerationTypes.PoiType.NONE
+	cell.trace_type = WdcMapGenerationTypes.PoiType.NONE
+	cell.is_poi_protected = false
+	WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+
+
+func _compute_site_clearance_ratio(
+	map_data: WdcMapGenerationTypes.MapData,
+	center_cell: Vector2i,
+	radius_cells: int
+) -> float:
+	var radius: int = maxi(radius_cells, 0)
+	if radius <= 0:
+		var center_data: WdcMapGenerationTypes.CellData = map_data.get_cell(center_cell.x, center_cell.y)
+		return 1.0 if _is_site_floor_cell(center_data) else 0.0
+	var total_count: int = 0
+	var floor_count: int = 0
+	for y: int in range(center_cell.y - radius, center_cell.y + radius + 1):
+		for x: int in range(center_cell.x - radius, center_cell.x + radius + 1):
+			total_count += 1
+			if not map_data.is_in_bounds(x, y):
+				continue
+			if _is_site_floor_cell(map_data.get_cell(x, y)):
+				floor_count += 1
+	if total_count <= 0:
+		return 0.0
+	return float(floor_count) / float(total_count)
+
+
+func _resolve_site_layer_count_entries(
+	total_count: int,
+	distribution: Array[Dictionary]
+) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	if total_count <= 0:
+		return entries
+	var total_ratio: float = 0.0
+	for distribution_entry: Dictionary in distribution:
+		var layer_id: String = str(distribution_entry.get("layer_id", "")).strip_edges()
+		var ratio: float = maxf(float(distribution_entry.get("ratio", 0.0)), 0.0)
+		if layer_id.is_empty() or ratio <= 0.0:
+			continue
+		total_ratio += ratio
+		entries.append({
+			"layer_id": layer_id,
+			"ratio": ratio,
+			"count": 0,
+			"remainder": 0.0,
+		})
+	if entries.is_empty():
+		entries.append({
+			"layer_id": "inner",
+			"ratio": 1.0,
+			"count": total_count,
+			"remainder": 0.0,
+		})
+		return entries
+	var assigned: int = 0
+	for entry: Dictionary in entries:
+		var exact_count: float = float(total_count) * float(entry.get("ratio", 0.0)) / total_ratio
+		var base_count: int = int(floor(exact_count))
+		entry["count"] = base_count
+		entry["remainder"] = exact_count - float(base_count)
+		assigned += base_count
+	if total_count >= entries.size():
+		for entry: Dictionary in entries:
+			if int(entry.get("count", 0)) > 0:
+				continue
+			entry["count"] = 1
+			assigned += 1
+	while assigned > total_count:
+		entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			if int(a.get("count", 0)) == int(b.get("count", 0)):
+				return float(a.get("ratio", 0.0)) < float(b.get("ratio", 0.0))
+			return int(a.get("count", 0)) > int(b.get("count", 0))
+		)
+		for entry: Dictionary in entries:
+			if int(entry.get("count", 0)) > 0:
+				entry["count"] = int(entry["count"]) - 1
+				assigned -= 1
+				break
+	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if absf(float(a.get("remainder", 0.0)) - float(b.get("remainder", 0.0))) > 0.0001:
+			return float(a.get("remainder", 0.0)) > float(b.get("remainder", 0.0))
+		return float(a.get("ratio", 0.0)) > float(b.get("ratio", 0.0))
+	)
+	while assigned < total_count:
+		for entry: Dictionary in entries:
+			if assigned >= total_count:
+				break
+			entry["count"] = int(entry.get("count", 0)) + 1
+			assigned += 1
+	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return str(a.get("layer_id", "")).nocasecmp_to(str(b.get("layer_id", ""))) < 0
+	)
+	return entries
+
+
+func _cell_key_lookup(cells: Array[Vector2i]) -> Dictionary:
+	var lookup: Dictionary = {}
+	for cell: Vector2i in cells:
+		lookup[_key(cell.x, cell.y)] = true
+	return lookup
+
+
+func _duplicate_vector2i_array(cells: Array[Vector2i]) -> Array[Vector2i]:
+	var duplicated: Array[Vector2i] = []
+	for cell: Vector2i in cells:
+		duplicated.append(cell)
+	return duplicated
+
+
+func _stable_site_tie_breaker(cell: Vector2i, salt: String) -> int:
+	var base_seed: int = last_resolved_seed if last_resolved_seed != 0 else 1
+	var salt_hash: int = abs(salt.hash())
+	return abs(
+		int(cell.x * 73856093)
+		^ int(cell.y * 19349663)
+		^ int(base_seed * 83492791)
+		^ salt_hash
+	)
+
+
 func _key(x: int, y: int) -> String:
 	return "%d,%d" % [x, y]
 
@@ -2870,30 +3300,3 @@ func _encode_server_tile(cell: WdcMapGenerationTypes.CellData) -> int:
 	if cell.cell_type == WdcMapGenerationTypes.CellType.FLOOR:
 		return WdcMapGenerationTypes.ServerTileType.EMPTY
 	return WdcMapGenerationTypes.ServerTileType.WALL
-
-
-func _generate_player_spawn_points(
-	map_data: WdcMapGenerationTypes.MapData,
-	rng: RandomNumberGenerator,
-	target_count: int
-) -> Array[Dictionary]:
-	var floor_cells: Array[Vector2i] = []
-	for y: int in range(map_data.height):
-		for x: int in range(map_data.width):
-			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
-			if cell != null and cell.cell_type == WdcMapGenerationTypes.CellType.FLOOR:
-				floor_cells.append(Vector2i(x, y))
-	var spawn_points: Array[Dictionary] = []
-	if floor_cells.is_empty():
-		return spawn_points
-	var needed: int = mini(target_count, floor_cells.size())
-	for _idx: int in range(needed):
-		var pick_index: int = rng.randi_range(0, floor_cells.size() - 1)
-		var picked: Vector2i = floor_cells[pick_index]
-		spawn_points.append({
-			"x": picked.x,
-			"y": picked.y
-		})
-		floor_cells.remove_at(pick_index)
-	return spawn_points
-

@@ -106,6 +106,22 @@ class MapConfig:
 	var mineral_cluster_overrides: Array[Dictionary] = []
 	var poi_templates: Array[Dictionary] = []
 	var map_layers: Array[Dictionary] = []
+	var player_spawn_count: int = 2
+	var player_spawn_layer_id: String = "outer"
+	var player_spawn_edge_margin_cells: int = 6
+	var player_spawn_min_distance_between_spawns_cells: float = 10.0
+	var player_spawn_clearance_radius_cells: int = 2
+	var player_spawn_min_clearance_ratio: float = 0.65
+	var extraction_site_count: int = 3
+	var extraction_site_layer_distribution: Array[Dictionary] = [
+		{"layer_id": "inner", "ratio": 0.8},
+		{"layer_id": "middle", "ratio": 0.2},
+	]
+	var extraction_site_min_distance_from_player_spawns_cells: float = 12.0
+	var extraction_site_min_distance_between_sites_cells: float = 10.0
+	var extraction_site_edge_margin_cells: int = 6
+	var extraction_site_clearance_radius_cells: int = 2
+	var extraction_site_min_clearance_ratio: float = 0.65
 	var traps_high_density: bool = false
 	var traps_spike_max_count: int = -1
 	var traps_spike_min_spacing: int = -1
@@ -161,6 +177,36 @@ class MapConfig:
 			mineral_min_distance_between_cluster_seeds_cells
 		)
 		map_layers = _normalize_map_layers(map_layers, width, height)
+		player_spawn_count = maxi(player_spawn_count, 0)
+		player_spawn_layer_id = player_spawn_layer_id.strip_edges()
+		if player_spawn_layer_id.is_empty():
+			player_spawn_layer_id = "outer"
+		player_spawn_edge_margin_cells = maxi(player_spawn_edge_margin_cells, 0)
+		player_spawn_min_distance_between_spawns_cells = maxf(
+			player_spawn_min_distance_between_spawns_cells,
+			0.0
+		)
+		player_spawn_clearance_radius_cells = maxi(player_spawn_clearance_radius_cells, 0)
+		player_spawn_min_clearance_ratio = clampf(player_spawn_min_clearance_ratio, 0.0, 1.0)
+		extraction_site_count = maxi(extraction_site_count, 0)
+		extraction_site_layer_distribution = _normalize_site_layer_distribution(
+			extraction_site_layer_distribution
+		)
+		extraction_site_min_distance_from_player_spawns_cells = maxf(
+			extraction_site_min_distance_from_player_spawns_cells,
+			0.0
+		)
+		extraction_site_min_distance_between_sites_cells = maxf(
+			extraction_site_min_distance_between_sites_cells,
+			0.0
+		)
+		extraction_site_edge_margin_cells = maxi(extraction_site_edge_margin_cells, 0)
+		extraction_site_clearance_radius_cells = maxi(extraction_site_clearance_radius_cells, 0)
+		extraction_site_min_clearance_ratio = clampf(
+			extraction_site_min_clearance_ratio,
+			0.0,
+			1.0
+		)
 
 	func _normalize_map_layers(
 		layer_values: Array[Dictionary],
@@ -269,6 +315,28 @@ class MapConfig:
 		)
 		return normalized
 
+	func _normalize_site_layer_distribution(
+		distribution_values: Array[Dictionary]
+	) -> Array[Dictionary]:
+		var normalized: Array[Dictionary] = []
+		for distribution_value: Dictionary in distribution_values:
+			var layer_id: String = str(distribution_value.get("layer_id", "")).strip_edges()
+			if layer_id.is_empty():
+				layer_id = str(distribution_value.get("id", "")).strip_edges()
+			var ratio: float = maxf(float(distribution_value.get("ratio", 0.0)), 0.0)
+			if layer_id.is_empty() or ratio <= 0.0:
+				continue
+			normalized.append({
+				"layer_id": layer_id,
+				"ratio": ratio,
+			})
+		if normalized.is_empty():
+			normalized = [
+				{"layer_id": "inner", "ratio": 0.8},
+				{"layer_id": "middle", "ratio": 0.2},
+			]
+		return normalized
+
 
 class MapData:
 	extends RefCounted
@@ -278,6 +346,8 @@ class MapData:
 	var grid: Array[Array] = []
 	var poi_centers: Array[Dictionary] = []
 	var poi_instances: Array[Dictionary] = []
+	var player_spawn_points: Array[Dictionary] = []
+	var extraction_sites: Array[Dictionary] = []
 	var monster_sites: Array[Dictionary] = []
 	var trap_sites: Array[Dictionary] = []
 	var total_floor: int = 0
@@ -325,6 +395,10 @@ class MapData:
 			copied.poi_centers.append(center_data.duplicate(true))
 		for poi_instance: Dictionary in poi_instances:
 			copied.poi_instances.append(poi_instance.duplicate(true))
+		for spawn_point: Dictionary in player_spawn_points:
+			copied.player_spawn_points.append(spawn_point.duplicate(true))
+		for extraction_site: Dictionary in extraction_sites:
+			copied.extraction_sites.append(extraction_site.duplicate(true))
 		for monster_site: Dictionary in monster_sites:
 			copied.monster_sites.append(monster_site.duplicate(true))
 		for trap_site: Dictionary in trap_sites:
@@ -346,6 +420,7 @@ class MapServerPayload:
 	var revision: int = 0
 	var tile_matrix: Array[Array] = []
 	var player_spawn_points: Array[Dictionary] = []
+	var extraction_sites: Array[Dictionary] = []
 
 	func to_dict() -> Dictionary:
 		return {
@@ -355,7 +430,8 @@ class MapServerPayload:
 			"resolved_seed": resolved_seed,
 			"revision": revision,
 			"tile_matrix": tile_matrix,
-			"player_spawn_points": player_spawn_points
+			"player_spawn_points": player_spawn_points,
+			"extraction_sites": extraction_sites
 		}
 
 
@@ -379,6 +455,9 @@ static func server_payload_from_variant(payload_value: Variant) -> MapServerPayl
 		for spawn_point_value: Variant in source_payload.player_spawn_points:
 			if spawn_point_value is Dictionary:
 				payload.player_spawn_points.append((spawn_point_value as Dictionary).duplicate(true))
+		for extraction_site_value: Variant in source_payload.extraction_sites:
+			if extraction_site_value is Dictionary:
+				payload.extraction_sites.append((extraction_site_value as Dictionary).duplicate(true))
 		return payload
 	if not (payload_value is Dictionary):
 		return payload
@@ -405,6 +484,12 @@ static func server_payload_from_variant(payload_value: Variant) -> MapServerPayl
 		for spawn_point_value: Variant in spawn_points:
 			if spawn_point_value is Dictionary:
 				payload.player_spawn_points.append((spawn_point_value as Dictionary).duplicate(true))
+	var extraction_sites_value: Variant = payload_dict.get("extraction_sites", [])
+	if extraction_sites_value is Array:
+		var extraction_sites: Array = extraction_sites_value as Array
+		for extraction_site_value: Variant in extraction_sites:
+			if extraction_site_value is Dictionary:
+				payload.extraction_sites.append((extraction_site_value as Dictionary).duplicate(true))
 	return payload
 
 
@@ -439,6 +524,12 @@ static func map_data_from_server_payload(payload: MapServerPayload) -> MapData:
 			if cell != null and cell.cell_type == CellType.FLOOR:
 				total_floor += 1
 	map_data.total_floor = total_floor
+	for spawn_point_value: Variant in payload.player_spawn_points:
+		if spawn_point_value is Dictionary:
+			map_data.player_spawn_points.append((spawn_point_value as Dictionary).duplicate(true))
+	for extraction_site_value: Variant in payload.extraction_sites:
+		if extraction_site_value is Dictionary:
+			map_data.extraction_sites.append((extraction_site_value as Dictionary).duplicate(true))
 	return map_data
 
 
@@ -461,7 +552,8 @@ static func build_server_payload_from_runtime(
 	spawn_cells: Array[Vector2i],
 	cell_size_m: float,
 	resolved_seed: int,
-	revision: int
+	revision: int,
+	extraction_sites: Array[Dictionary] = []
 ) -> MapServerPayload:
 	var payload: MapServerPayload = MapServerPayload.new()
 	if map_data == null:
@@ -478,11 +570,32 @@ static func build_server_payload_from_runtime(
 		for x: int in range(map_data.width):
 			row[x] = encode_server_tile(map_data.get_cell(x, y))
 		payload.tile_matrix[y] = row
-	for spawn_cell: Vector2i in spawn_cells:
-		payload.player_spawn_points.append({
-			"x": spawn_cell.x,
-			"y": spawn_cell.y
-		})
+	if spawn_cells.is_empty():
+		for spawn_point: Dictionary in map_data.player_spawn_points:
+			payload.player_spawn_points.append(spawn_point.duplicate(true))
+	else:
+		var spawn_points_by_key: Dictionary = {}
+		for spawn_point: Dictionary in map_data.player_spawn_points:
+			var spawn_key: String = "%d,%d" % [
+				int(spawn_point.get("x", 0)),
+				int(spawn_point.get("y", 0))
+			]
+			spawn_points_by_key[spawn_key] = spawn_point.duplicate(true)
+		for spawn_cell: Vector2i in spawn_cells:
+			var spawn_cell_key: String = "%d,%d" % [spawn_cell.x, spawn_cell.y]
+			var payload_spawn_point: Dictionary = {}
+			if spawn_points_by_key.has(spawn_cell_key) and spawn_points_by_key[spawn_cell_key] is Dictionary:
+				payload_spawn_point = (spawn_points_by_key[spawn_cell_key] as Dictionary).duplicate(true)
+			payload_spawn_point["x"] = spawn_cell.x
+			payload_spawn_point["y"] = spawn_cell.y
+			if not payload_spawn_point.has("site_kind"):
+				payload_spawn_point["site_kind"] = "player_spawn"
+			payload.player_spawn_points.append(payload_spawn_point)
+	var source_extraction_sites: Array[Dictionary] = extraction_sites
+	if source_extraction_sites.is_empty():
+		source_extraction_sites = map_data.extraction_sites
+	for extraction_site: Dictionary in source_extraction_sites:
+		payload.extraction_sites.append(extraction_site.duplicate(true))
 	return payload
 
 

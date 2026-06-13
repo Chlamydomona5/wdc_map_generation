@@ -21,6 +21,40 @@
             "mode": { "enum": ["random", "fixed"] },
             "fixed_value": { "type": "integer", "minimum": 0 }
           }
+        },
+        "player_spawn": {
+          "type": "object",
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "layer_id": { "enum": ["outer"] },
+            "edge_margin_cells": { "type": "integer", "minimum": 0 },
+            "min_distance_between_spawns_cells": { "type": "number", "minimum": 0 },
+            "clearance_radius_cells": { "type": "integer", "minimum": 0 },
+            "min_clearance_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "extraction_sites": {
+          "type": "object",
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "layer_distribution": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["layer_id", "ratio"],
+                "properties": {
+                  "layer_id": { "enum": ["inner", "middle"] },
+                  "ratio": { "type": "number", "exclusiveMinimum": 0 }
+                }
+              }
+            },
+            "min_distance_from_player_spawns_cells": { "type": "number", "minimum": 0 },
+            "min_distance_between_sites_cells": { "type": "number", "minimum": 0 },
+            "edge_margin_cells": { "type": "integer", "minimum": 0 },
+            "clearance_radius_cells": { "type": "integer", "minimum": 0 },
+            "min_clearance_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
         }
       }
     },

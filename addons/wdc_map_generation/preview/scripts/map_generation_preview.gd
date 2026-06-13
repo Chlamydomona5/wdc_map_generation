@@ -22,6 +22,7 @@ const COLOR_TRACE_LARGE: Color = Color(0.30, 0.22, 0.11, 1.0)
 const COLOR_TRACE_MEDIUM: Color = Color(0.24, 0.16, 0.31, 1.0)
 const COLOR_TRACE_SMALL: Color = Color(0.08, 0.22, 0.20, 1.0)
 const COLOR_PLAYER_SPAWN: Color = Color(0.95, 0.95, 0.95, 1.0)
+const COLOR_EXTRACTION_SITE: Color = Color(0.28, 0.62, 1.0, 1.0)
 const COLOR_MONSTER_SITE: Color = Color(0.24, 0.95, 0.40, 1.0)
 const COLOR_NEST_SITE: Color = Color(0.92, 0.24, 0.24, 1.0)
 const COLOR_TRAP: Color = Color(0.95, 0.35, 0.20, 1.0)
@@ -73,6 +74,7 @@ const PARAMETER_LABELS: Dictionary = {
 	"edge_margin_cells": "边缘留白",
 	"enabled": "是否启用",
 	"entries": "权重条目",
+	"extraction_sites": "撤离点",
 	"exposed_wall_candidate_chance": "暴露墙候选概率",
 	"extra_connection_chance": "额外连接概率",
 	"fixed_value": "固定种子值",
@@ -86,6 +88,8 @@ const PARAMETER_LABELS: Dictionary = {
 	"id": "配置 ID",
 	"isolated_spawn_templates": "独立刷怪模板",
 	"length_factor": "长度系数",
+	"layer_distribution": "层级分布",
+	"layer_id": "层级",
 	"loot_table_id": "掉落表 ID",
 	"main_room": "主房间",
 	"main_room_roll": "主房间内容随机表",
@@ -678,9 +682,19 @@ func _rebuild_preview(randomize_seed: bool) -> void:
 	_texture_rect.texture = ImageTexture.create_from_image(_build_map_preview_image(map_data))
 	_fit_preview_to_viewport()
 	_seed_label.text = "种子：%d" % _preview_seed
+	var site_summary: Dictionary = _build_site_status_summary(map_data)
 	_set_status(
-		"预览已重建：文件=%s 尺寸=%sx%s"
-		% [_current_config_filename, map_data.width, map_data.height]
+		"预览已重建：文件=%s 尺寸=%sx%s 出生=%d 撤离=%d inner=%d middle=%d fallback=%d"
+		% [
+			_current_config_filename,
+			map_data.width,
+			map_data.height,
+			int(site_summary.get("spawn_count", 0)),
+			int(site_summary.get("extraction_count", 0)),
+			int(site_summary.get("inner_count", 0)),
+			int(site_summary.get("middle_count", 0)),
+			int(site_summary.get("fallback_count", 0)),
+		]
 	)
 
 
@@ -793,7 +807,15 @@ func _update_hover_from_mouse(mouse_position: Vector2) -> void:
 	_hover_cell_rect.size = Vector2.ONE * maxf(_preview_zoom, 1.0)
 	_hover_cell_rect.visible = true
 	var cell_data: WdcMapGenerationTypes.CellData = _current_map_data.get_cell(cell.x, cell.y)
-	_hover_tile_label.text = "(%d, %d) %s" % [cell.x, cell.y, _resolve_cell_display_name(cell_data)]
+	var hover_text: String = "(%d, %d) %s" % [
+		cell.x,
+		cell.y,
+		_resolve_cell_display_name(cell_data)
+	]
+	var site_info: String = _resolve_cell_site_hover_info(cell)
+	if not site_info.is_empty():
+		hover_text += "\n%s" % site_info
+	_hover_tile_label.text = hover_text
 	_hover_tile_label.position = _fit_hover_label_position(mouse_position + Vector2(12.0, 12.0))
 	_hover_tile_label.visible = true
 
@@ -894,6 +916,14 @@ func _build_map_preview_image(map_data: WdcMapGenerationTypes.MapData) -> Image:
 		if poi_center_value is Dictionary:
 			var poi_center: Dictionary = poi_center_value as Dictionary
 			_paint_cross(image, Vector2i(int(poi_center.get("x", 0)), int(poi_center.get("y", 0))), COLOR_GOLD, map_data.height)
+	for spawn_point_value: Variant in map_data.player_spawn_points:
+		if spawn_point_value is Dictionary:
+			var spawn_point: Dictionary = spawn_point_value as Dictionary
+			_paint_point(image, _vector2i_from_variant(spawn_point), COLOR_PLAYER_SPAWN, map_data.height)
+	for extraction_site_value: Variant in map_data.extraction_sites:
+		if extraction_site_value is Dictionary:
+			var extraction_site: Dictionary = extraction_site_value as Dictionary
+			_paint_point(image, _vector2i_from_variant(extraction_site), COLOR_EXTRACTION_SITE, map_data.height)
 	for site_value: Variant in map_data.monster_sites:
 		if site_value is Dictionary:
 			var site: Dictionary = site_value as Dictionary
@@ -908,6 +938,61 @@ func _build_map_preview_image(map_data: WdcMapGenerationTypes.MapData) -> Image:
 			else:
 				_paint_cross(image, _vector2i_from_variant(trap_site.get("cell", Vector2i.ZERO)), COLOR_TRAP, map_data.height)
 	return image
+
+
+func _build_site_status_summary(map_data: WdcMapGenerationTypes.MapData) -> Dictionary:
+	var summary: Dictionary = {
+		"spawn_count": 0,
+		"extraction_count": 0,
+		"inner_count": 0,
+		"middle_count": 0,
+		"fallback_count": 0,
+	}
+	if map_data == null:
+		return summary
+	summary["spawn_count"] = map_data.player_spawn_points.size()
+	summary["extraction_count"] = map_data.extraction_sites.size()
+	for spawn_point: Dictionary in map_data.player_spawn_points:
+		if str(spawn_point.get("fallback_reason", "")).strip_edges() != "":
+			summary["fallback_count"] = int(summary["fallback_count"]) + 1
+	for extraction_site: Dictionary in map_data.extraction_sites:
+		var layer_id: String = str(extraction_site.get("layer_id", ""))
+		if layer_id == "inner":
+			summary["inner_count"] = int(summary["inner_count"]) + 1
+		elif layer_id == "middle":
+			summary["middle_count"] = int(summary["middle_count"]) + 1
+		if str(extraction_site.get("fallback_reason", "")).strip_edges() != "":
+			summary["fallback_count"] = int(summary["fallback_count"]) + 1
+	return summary
+
+
+func _resolve_cell_site_hover_info(cell: Vector2i) -> String:
+	if _current_map_data == null:
+		return ""
+	var parts: Array[String] = []
+	for spawn_point: Dictionary in _current_map_data.player_spawn_points:
+		if _vector2i_from_variant(spawn_point) == cell:
+			parts.append(_format_site_hover_line("玩家出生点", spawn_point))
+	for extraction_site: Dictionary in _current_map_data.extraction_sites:
+		if _vector2i_from_variant(extraction_site) == cell:
+			parts.append(_format_site_hover_line("撤离点", extraction_site))
+	return "\n".join(parts)
+
+
+func _format_site_hover_line(label: String, site: Dictionary) -> String:
+	var fields: Array[String] = []
+	var layer_id: String = str(site.get("layer_id", "")).strip_edges()
+	var requested_layer_id: String = str(site.get("requested_layer_id", "")).strip_edges()
+	var fallback_reason: String = str(site.get("fallback_reason", "")).strip_edges()
+	if not layer_id.is_empty():
+		fields.append("层级=%s" % layer_id)
+	if not requested_layer_id.is_empty() and requested_layer_id != layer_id:
+		fields.append("目标层级=%s" % requested_layer_id)
+	if not fallback_reason.is_empty():
+		fields.append("fallback=%s" % fallback_reason)
+	if fields.is_empty():
+		return label
+	return "%s（%s）" % [label, "，".join(fields)]
 
 
 func _resolve_map_cell_color(cell: WdcMapGenerationTypes.CellData) -> Color:
@@ -1129,6 +1214,12 @@ func _paint_cross(image: Image, cell: Vector2i, color: Color, map_height: int) -
 		if target.x < 0 or target.y < 0 or target.x >= image.get_width() or target.y >= image.get_height():
 			continue
 		image.set_pixel(target.x, map_height - 1 - target.y, color)
+
+
+func _paint_point(image: Image, cell: Vector2i, color: Color, map_height: int) -> void:
+	if cell.x < 0 or cell.y < 0 or cell.x >= image.get_width() or cell.y >= image.get_height():
+		return
+	image.set_pixel(cell.x, map_height - 1 - cell.y, color)
 
 
 func _vector2i_from_variant(value: Variant) -> Vector2i:

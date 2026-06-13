@@ -208,6 +208,8 @@ static func apply_config_dict_to_legacy_map_config(
 		config.mineral_cluster_types
 	)
 	config.map_layers = _normalize_map_layers(config_dict.get("map_layers", []))
+	_apply_player_spawn_config(config, map_dict.get("player_spawn", {}))
+	_apply_extraction_site_config(config, map_dict.get("extraction_sites", {}))
 	config.poi_templates = _normalize_poi_templates(
 		(config_dict.get("poi_generation", {}) as Dictionary).get("poi_types", [])
 	)
@@ -512,6 +514,132 @@ static func _normalize_map_layers(layer_values: Variant) -> Array[Dictionary]:
 				layer_dict["boundary_noise_seed_offset"]
 			)
 		normalized.append(layer_dict)
+	return normalized
+
+
+static func _apply_player_spawn_config(
+	config: WdcMapGenerationTypes.MapConfig,
+	player_spawn_value: Variant
+) -> void:
+	if not (player_spawn_value is Dictionary):
+		return
+	var player_spawn: Dictionary = player_spawn_value as Dictionary
+	config.player_spawn_count = maxi(int(player_spawn.get("count", config.player_spawn_count)), 0)
+	config.player_spawn_layer_id = str(
+		player_spawn.get("layer_id", config.player_spawn_layer_id)
+	).strip_edges()
+	config.player_spawn_edge_margin_cells = maxi(
+		int(player_spawn.get("edge_margin_cells", config.player_spawn_edge_margin_cells)),
+		0
+	)
+	config.player_spawn_min_distance_between_spawns_cells = maxf(
+		float(
+			player_spawn.get(
+				"min_distance_between_spawns_cells",
+				config.player_spawn_min_distance_between_spawns_cells
+			)
+		),
+		0.0
+	)
+	config.player_spawn_clearance_radius_cells = maxi(
+		int(
+			player_spawn.get(
+				"clearance_radius_cells",
+				config.player_spawn_clearance_radius_cells
+			)
+		),
+		0
+	)
+	config.player_spawn_min_clearance_ratio = clampf(
+		float(player_spawn.get("min_clearance_ratio", config.player_spawn_min_clearance_ratio)),
+		0.0,
+		1.0
+	)
+
+
+static func _apply_extraction_site_config(
+	config: WdcMapGenerationTypes.MapConfig,
+	extraction_sites_value: Variant
+) -> void:
+	if not (extraction_sites_value is Dictionary):
+		return
+	var extraction_sites: Dictionary = extraction_sites_value as Dictionary
+	config.extraction_site_count = maxi(
+		int(extraction_sites.get("count", config.extraction_site_count)),
+		0
+	)
+	config.extraction_site_layer_distribution = _normalize_site_layer_distribution(
+		extraction_sites.get(
+			"layer_distribution",
+			config.extraction_site_layer_distribution
+		)
+	)
+	config.extraction_site_min_distance_from_player_spawns_cells = maxf(
+		float(
+			extraction_sites.get(
+				"min_distance_from_player_spawns_cells",
+				config.extraction_site_min_distance_from_player_spawns_cells
+			)
+		),
+		0.0
+	)
+	config.extraction_site_min_distance_between_sites_cells = maxf(
+		float(
+			extraction_sites.get(
+				"min_distance_between_sites_cells",
+				config.extraction_site_min_distance_between_sites_cells
+			)
+		),
+		0.0
+	)
+	config.extraction_site_edge_margin_cells = maxi(
+		int(extraction_sites.get("edge_margin_cells", config.extraction_site_edge_margin_cells)),
+		0
+	)
+	config.extraction_site_clearance_radius_cells = maxi(
+		int(
+			extraction_sites.get(
+				"clearance_radius_cells",
+				config.extraction_site_clearance_radius_cells
+			)
+		),
+		0
+	)
+	config.extraction_site_min_clearance_ratio = clampf(
+		float(
+			extraction_sites.get(
+				"min_clearance_ratio",
+				config.extraction_site_min_clearance_ratio
+			)
+		),
+		0.0,
+		1.0
+	)
+
+
+static func _normalize_site_layer_distribution(distribution_value: Variant) -> Array[Dictionary]:
+	var normalized: Array[Dictionary] = []
+	if distribution_value is Array:
+		var distribution: Array = distribution_value as Array
+		for entry_value: Variant in distribution:
+			if not (entry_value is Dictionary):
+				continue
+			var entry: Dictionary = entry_value as Dictionary
+			var layer_id: String = str(entry.get("layer_id", "")).strip_edges()
+			if layer_id.is_empty():
+				layer_id = str(entry.get("id", "")).strip_edges()
+			var ratio: float = maxf(float(entry.get("ratio", 0.0)), 0.0)
+			if layer_id.is_empty() or ratio <= 0.0:
+				continue
+			normalized.append({
+				"layer_id": layer_id,
+				"ratio": ratio,
+			})
+	if normalized.is_empty():
+		normalized = [
+			{"layer_id": "inner", "ratio": 0.8},
+			{"layer_id": "middle", "ratio": 0.2},
+		]
 	return normalized
 
 
