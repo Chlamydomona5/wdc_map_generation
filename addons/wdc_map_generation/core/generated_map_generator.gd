@@ -2217,6 +2217,119 @@ func _resolve_trap_spacing(explicit_value: int, _default_value: int, fallback_va
 	return fallback_value
 
 
+func _collect_spike_candidate_cells_from_pois(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	target_layer_id: String
+) -> Array[Vector2i]:
+	var candidates: Array[Vector2i] = []
+	if map_data == null:
+		return candidates
+	var seen_keys: Dictionary = {}
+	for poi_instance: Dictionary in map_data.poi_instances:
+		var poi_layer_id: String = str(poi_instance.get("layer_id", ""))
+		if not target_layer_id.is_empty() and not poi_layer_id.is_empty() and poi_layer_id != target_layer_id:
+			continue
+		_append_spike_candidates_from_rect(
+			map_data,
+			config,
+			_dict_to_rect2i(poi_instance.get("main_room", {}) as Dictionary),
+			target_layer_id,
+			seen_keys,
+			candidates
+		)
+		var sub_rooms: Array = poi_instance.get("sub_rooms", []) as Array
+		for sub_room_value: Variant in sub_rooms:
+			if not (sub_room_value is Dictionary):
+				continue
+			_append_spike_candidates_from_rect(
+				map_data,
+				config,
+				_dict_to_rect2i(sub_room_value as Dictionary),
+				target_layer_id,
+				seen_keys,
+				candidates
+			)
+		var corridors: Array = poi_instance.get("corridors", []) as Array
+		for corridor_value: Variant in corridors:
+			if not (corridor_value is Dictionary):
+				continue
+			var corridor: Dictionary = corridor_value as Dictionary
+			var cells: Array = corridor.get("cells", []) as Array
+			for cell_value: Variant in cells:
+				if not (cell_value is Dictionary):
+					continue
+				var cell_dict: Dictionary = cell_value as Dictionary
+				_append_spike_candidate_cell(
+					map_data,
+					config,
+					Vector2i(int(cell_dict.get("x", -1)), int(cell_dict.get("y", -1))),
+					target_layer_id,
+					seen_keys,
+					candidates
+				)
+	return candidates
+
+
+func _append_spike_candidates_from_rect(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	room_rect: Rect2i,
+	target_layer_id: String,
+	seen_keys: Dictionary,
+	candidates: Array[Vector2i]
+) -> void:
+	if room_rect.size.x <= 0 or room_rect.size.y <= 0:
+		return
+	for y: int in range(room_rect.position.y, room_rect.position.y + room_rect.size.y):
+		for x: int in range(room_rect.position.x, room_rect.position.x + room_rect.size.x):
+			_append_spike_candidate_cell(
+				map_data,
+				config,
+				Vector2i(x, y),
+				target_layer_id,
+				seen_keys,
+				candidates
+			)
+
+
+func _append_spike_candidate_cell(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	candidate: Vector2i,
+	target_layer_id: String,
+	seen_keys: Dictionary,
+	candidates: Array[Vector2i]
+) -> void:
+	if not map_data.is_in_bounds(candidate.x, candidate.y):
+		return
+	var candidate_key: String = _key(candidate.x, candidate.y)
+	if seen_keys.has(candidate_key):
+		return
+	var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(candidate.x, candidate.y)
+	if cell == null:
+		return
+	if cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
+		return
+	if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
+		return
+	if not _is_cell_in_target_layer(config, map_data, candidate, target_layer_id):
+		return
+	seen_keys[candidate_key] = true
+	candidates.append(candidate)
+
+
+func _dict_to_rect2i(rect_dict: Dictionary) -> Rect2i:
+	if rect_dict.is_empty():
+		return Rect2i()
+	return Rect2i(
+		int(rect_dict.get("x", 0)),
+		int(rect_dict.get("y", 0)),
+		int(rect_dict.get("width", 0)),
+		int(rect_dict.get("height", 0))
+	)
+
+
 func _place_spike_patches(
 	map_data: WdcMapGenerationTypes.MapData,
 	config: WdcMapGenerationTypes.MapConfig,
@@ -2227,22 +2340,17 @@ func _place_spike_patches(
 ) -> void:
 	if max_count <= 0:
 		return
-	var floor_cells: Array[Vector2i] = []
-	for y: int in range(map_data.height):
-		for x: int in range(map_data.width):
-			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
-			if cell == null:
-				continue
-			if cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
-				continue
-			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
-				continue
-			if not _is_cell_in_target_layer(config, map_data, Vector2i(x, y), target_layer_id):
-				continue
-			floor_cells.append(Vector2i(x, y))
+	var floor_cells: Array[Vector2i] = _collect_spike_candidate_cells_from_pois(
+		map_data,
+		config,
+		target_layer_id
+	)
 	if floor_cells.is_empty():
 		return
 	_shuffle_vector2i_array(floor_cells, rng)
+	var allowed_cells: Dictionary = {}
+	for floor_cell: Vector2i in floor_cells:
+		allowed_cells[_key(floor_cell.x, floor_cell.y)] = true
 	var placed_cells: Array[Vector2i] = []
 	var patches_placed: int = 0
 	for seed_cell: Vector2i in floor_cells:
@@ -2251,7 +2359,13 @@ func _place_spike_patches(
 		if _is_too_close_to_existing_spike(seed_cell, placed_cells, spacing):
 			continue
 		var patch_size: int = rng.randi_range(TRAP_SPIKE_PATCH_MIN_SIZE, TRAP_SPIKE_PATCH_MAX_SIZE)
-		var patch_cells: Array[Vector2i] = _grow_spike_patch(map_data, seed_cell, patch_size, rng)
+		var patch_cells: Array[Vector2i] = _grow_spike_patch(
+			map_data,
+			seed_cell,
+			patch_size,
+			rng,
+			allowed_cells
+		)
 		if patch_cells.size() < TRAP_SPIKE_PATCH_MIN_SIZE:
 			continue
 		for patch_cell: Vector2i in patch_cells:
@@ -2271,7 +2385,8 @@ func _grow_spike_patch(
 	map_data: WdcMapGenerationTypes.MapData,
 	seed_cell: Vector2i,
 	target_size: int,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	allowed_cells: Dictionary = {}
 ) -> Array[Vector2i]:
 	var patch_cells: Array[Vector2i] = [seed_cell]
 	var visited: Dictionary = {}
@@ -2293,6 +2408,8 @@ func _grow_spike_patch(
 			if visited.has(neighbor_key):
 				continue
 			visited[neighbor_key] = true
+			if not allowed_cells.is_empty() and not allowed_cells.has(neighbor_key):
+				continue
 			if not map_data.is_in_bounds(neighbor.x, neighbor.y):
 				continue
 			var neighbor_cell: WdcMapGenerationTypes.CellData = map_data.get_cell(neighbor.x, neighbor.y)
