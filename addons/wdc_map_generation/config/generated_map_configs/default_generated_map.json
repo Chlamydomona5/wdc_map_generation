@@ -409,7 +409,7 @@
           "style": "orthogonal_l",
           "width_cells": 2.0
         },
-        "count": 1.0,
+        "count": 2.0,
         "dedicated_mineral_id": "amethyst_ore",
         "enabled": true,
         "id": "medium_amethyst_dungeon",
@@ -507,7 +507,7 @@
           "style": "orthogonal_l",
           "width_cells": 1.0
         },
-        "count": 2.0,
+        "count": 4.0,
         "dedicated_mineral_id": "turquoise_ore",
         "enabled": true,
         "id": "small_turquoise_dungeon",
@@ -558,8 +558,8 @@
       "count": 8.0,
       "enabled": true,
       "length_factor": 0.599999999976717,
-      "width_cells": 3.0,
-      "wobble_chance": 0.199999999953434
+      "width_cells": 5.0,
+      "wobble_chance": 0.800000000046566
     },
     "noise_fill_percent": 0.599999999976717,
     "smooth_iterations": 4.0

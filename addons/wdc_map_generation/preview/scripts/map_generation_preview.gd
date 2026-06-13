@@ -25,6 +25,9 @@ const COLOR_PLAYER_SPAWN: Color = Color(0.95, 0.95, 0.95, 1.0)
 const COLOR_MONSTER_SITE: Color = Color(0.24, 0.95, 0.40, 1.0)
 const COLOR_NEST_SITE: Color = Color(0.92, 0.24, 0.24, 1.0)
 const COLOR_TRAP: Color = Color(0.95, 0.35, 0.20, 1.0)
+const PREVIEW_MIN_ZOOM: float = 0.25
+const PREVIEW_MAX_ZOOM: float = 48.0
+const PREVIEW_PAN_VISIBLE_MARGIN_PX: float = 24.0
 const EDITOR_TAB_PARAMETERS: int = 0
 const EDITOR_TAB_JSON: int = 1
 const PARAMETER_LABELS: Dictionary = {
@@ -231,23 +234,23 @@ func _build_ui() -> void:
 	_config_selector.item_selected.connect(_on_config_selected)
 	toolbar.add_child(_config_selector)
 	_filename_input = LineEdit.new()
-	_filename_input.placeholder_text = "config filename"
+	_filename_input.placeholder_text = "配置文件名"
 	_filename_input.custom_minimum_size = Vector2(220.0, 0.0)
 	toolbar.add_child(_filename_input)
 	var save_button: Button = Button.new()
-	save_button.text = "Save Current Config"
+	save_button.text = "保存当前配置"
 	save_button.pressed.connect(_on_save_current_config_pressed)
 	toolbar.add_child(save_button)
 	var apply_button: Button = Button.new()
-	apply_button.text = "Apply Editor Changes"
+	apply_button.text = "应用编辑改动"
 	apply_button.pressed.connect(_on_apply_config_editor_pressed)
 	toolbar.add_child(apply_button)
 	var rebuild_button: Button = Button.new()
-	rebuild_button.text = "Rebuild Current Seed"
+	rebuild_button.text = "按当前种子重建"
 	rebuild_button.pressed.connect(_on_rebuild_current_seed_pressed)
 	toolbar.add_child(rebuild_button)
 	var random_button: Button = Button.new()
-	random_button.text = "Rebuild Random Seed"
+	random_button.text = "随机种子重建"
 	random_button.pressed.connect(_on_rebuild_random_seed_pressed)
 	toolbar.add_child(random_button)
 	_seed_label = Label.new()
@@ -301,7 +304,6 @@ func _build_ui() -> void:
 	_texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	_texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_texture_rect.custom_minimum_size = Vector2(720.0, 520.0)
 	_preview_viewport.add_child(_texture_rect)
 	_hover_cell_rect = ColorRect.new()
 	_hover_cell_rect.color = Color(1.0, 1.0, 1.0, 0.25)
@@ -582,6 +584,8 @@ func _load_config_list() -> void:
 	_config_selector.clear()
 	var configs: Array[Dictionary] = CONFIG_CATALOG.list_available_configs()
 	for config_entry: Dictionary in configs:
+		if _is_smoke_test_config_entry(config_entry):
+			continue
 		var filename: String = str(config_entry.get("filename", ""))
 		_config_selector.add_item(str(config_entry.get("display_name", filename)))
 		_config_selector.set_item_metadata(_config_selector.item_count - 1, filename)
@@ -590,6 +594,12 @@ func _load_config_list() -> void:
 		_current_config_filename = str(_config_selector.get_item_metadata(0))
 		_filename_input.text = _current_config_filename
 		_load_current_config_into_editor()
+
+
+func _is_smoke_test_config_entry(config_entry: Dictionary) -> bool:
+	var filename: String = str(config_entry.get("filename", "")).to_lower()
+	var display_name: String = str(config_entry.get("display_name", "")).to_lower()
+	return filename.begins_with("smoke_") or display_name.contains("smoke")
 
 
 func _on_config_selected(index: int) -> void:
@@ -605,19 +615,19 @@ func _on_save_current_config_pressed() -> void:
 		return
 	var filename: String = CONFIG_CATALOG.normalize_config_filename_input(_filename_input.text)
 	if filename.is_empty():
-		_set_status("Save failed: empty filename")
+		_set_status("保存失败：配置文件名为空")
 		return
 	var path: String = CONFIG_CATALOG.build_config_resource_path(filename)
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
-		_set_status("Save failed: %s" % path)
+		_set_status("保存失败：%s" % path)
 		return
 	file.store_string(JSON.stringify(_current_config_dict, "  "))
 	file.flush()
 	file = null
 	_current_config_filename = filename
 	_filename_input.text = filename
-	_set_status("Saved: %s" % path)
+	_set_status("已保存：%s" % path)
 	_load_config_list()
 	for item_index: int in range(_config_selector.item_count):
 		if str(_config_selector.get_item_metadata(item_index)) == filename:
@@ -644,22 +654,22 @@ func _rebuild_preview(randomize_seed: bool) -> void:
 	if not _sync_current_config_from_editor():
 		return
 	if _current_config_dict.is_empty():
-		_set_status("Preview failed: missing config")
+		_set_status("预览失败：缺少配置")
 		return
 	var map_config: WdcMapGenerationTypes.MapConfig = MAP_TYPES.MapConfig.new()
 	CONFIG_CATALOG.apply_config_dict_to_legacy_map_config(map_config, _current_config_dict)
 	map_config.seed = _resolve_preview_seed(_current_config_dict, randomize_seed)
 	var map_data: WdcMapGenerationTypes.MapData = _generator.generate_full(map_config)
 	if map_data == null:
-		_set_status("Preview failed: generator returned null")
+		_set_status("预览失败：地图生成器未返回结果")
 		return
 	_current_map_data = map_data
 	_preview_seed = _generator.last_resolved_seed
 	_texture_rect.texture = ImageTexture.create_from_image(_build_map_preview_image(map_data))
 	_fit_preview_to_viewport()
-	_seed_label.text = "Seed: %d" % _preview_seed
+	_seed_label.text = "种子：%d" % _preview_seed
 	_set_status(
-		"Preview rebuilt: file=%s size=%sx%s"
+		"预览已重建：文件=%s 尺寸=%sx%s"
 		% [_current_config_filename, map_data.width, map_data.height]
 	)
 
@@ -724,7 +734,7 @@ func _zoom_preview_at(mouse_position: Vector2, new_zoom: float) -> void:
 		return
 	var old_zoom: float = maxf(_preview_zoom, 0.001)
 	var map_local: Vector2 = (mouse_position - _preview_pan) / old_zoom
-	_preview_zoom = clampf(new_zoom, 1.0, 48.0)
+	_preview_zoom = clampf(new_zoom, PREVIEW_MIN_ZOOM, PREVIEW_MAX_ZOOM)
 	_preview_pan = mouse_position - map_local * _preview_zoom
 	_clamp_preview_pan()
 	_apply_preview_transform()
@@ -734,14 +744,28 @@ func _clamp_preview_pan() -> void:
 	if _preview_viewport == null or _current_map_data == null:
 		return
 	var display_size: Vector2 = Vector2(float(_current_map_data.width), float(_current_map_data.height)) * _preview_zoom
-	if display_size.x <= _preview_viewport.size.x:
-		_preview_pan.x = (_preview_viewport.size.x - display_size.x) * 0.5
-	else:
-		_preview_pan.x = clampf(_preview_pan.x, _preview_viewport.size.x - display_size.x, 0.0)
-	if display_size.y <= _preview_viewport.size.y:
-		_preview_pan.y = (_preview_viewport.size.y - display_size.y) * 0.5
-	else:
-		_preview_pan.y = clampf(_preview_pan.y, _preview_viewport.size.y - display_size.y, 0.0)
+	_preview_pan.x = _clamp_preview_axis_pan(
+		_preview_pan.x,
+		display_size.x,
+		_preview_viewport.size.x
+	)
+	_preview_pan.y = _clamp_preview_axis_pan(
+		_preview_pan.y,
+		display_size.y,
+		_preview_viewport.size.y
+	)
+
+
+func _clamp_preview_axis_pan(pan_value: float, display_length: float, viewport_length: float) -> float:
+	if display_length <= 0.0 or viewport_length <= 0.0:
+		return pan_value
+	var visible_margin: float = minf(PREVIEW_PAN_VISIBLE_MARGIN_PX, display_length * 0.5)
+	var min_pan: float = -display_length + visible_margin
+	var max_pan: float = viewport_length - visible_margin
+	if display_length > viewport_length:
+		min_pan = viewport_length - display_length - visible_margin
+		max_pan = visible_margin
+	return clampf(pan_value, min_pan, max_pan)
 
 
 func _on_preview_viewport_mouse_exited() -> void:
@@ -990,11 +1014,11 @@ func _sync_current_config_from_json_editor() -> bool:
 		return not _current_config_dict.is_empty()
 	var raw_text: String = _config_editor.text.strip_edges()
 	if raw_text.is_empty():
-		_set_status("Preview failed: empty config JSON")
+		_set_status("预览失败：配置 JSON 为空")
 		return false
 	var parsed: Variant = JSON.parse_string(raw_text)
 	if not (parsed is Dictionary):
-		_set_status("Preview failed: invalid config JSON")
+		_set_status("预览失败：配置 JSON 格式无效")
 		return false
 	_current_config_dict = (parsed as Dictionary).duplicate(true)
 	_config_editor_dirty = false
@@ -1008,7 +1032,7 @@ func _sync_current_config_from_parameter_editor() -> bool:
 			_load_current_config_into_editor()
 		return not _current_config_dict.is_empty()
 	if _current_config_dict.is_empty():
-		_set_status("Preview failed: missing config")
+		_set_status("预览失败：缺少配置")
 		return false
 	var config_dict: Dictionary = _current_config_dict.duplicate(true)
 	_parameter_editor_parse_error = false
@@ -1049,7 +1073,7 @@ func _read_parameter_control_value(control: Control, field_key: String) -> Varia
 			var error: Error = json_parser.parse((control as TextEdit).text)
 			if error != OK:
 				_parameter_editor_parse_error = true
-				_set_status("Preview failed: invalid JSON value at %s" % field_key)
+				_set_status("预览失败：%s 的 JSON 值格式无效" % field_key)
 				return null
 			return json_parser.data
 	return null
