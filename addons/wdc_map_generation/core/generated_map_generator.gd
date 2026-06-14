@@ -272,8 +272,6 @@ func _try_place_configured_poi(
 	for existing_instance: Dictionary in map_data.poi_instances:
 		if total_bounds.intersects(existing_instance.get("bounds", Rect2i())):
 			return false
-	_carve_poi_rooms_and_corridors(map_data, rooms, corridor_cells, compat_poi_type)
-	_place_poi_outer_walls(map_data, rooms, corridor_cells, compat_poi_type)
 	var center_cell: Vector2i = _rect_center_cell(main_room_rect)
 	var torch_sites: Array[Vector2i] = _build_main_room_torch_sites(main_room_rect, template_dict)
 	var room_content_plans: Array[Dictionary] = _build_room_content_plans(
@@ -283,6 +281,10 @@ func _try_place_configured_poi(
 		config,
 		rng
 	)
+	if _has_invalid_room_content_plan(room_content_plans):
+		return false
+	_carve_poi_rooms_and_corridors(map_data, rooms, corridor_cells, compat_poi_type)
+	_place_poi_outer_walls(map_data, rooms, corridor_cells, compat_poi_type)
 	var poi_layer: Dictionary = _resolve_layer_for_rect_center(config, map_data, main_room_rect)
 	map_data.poi_centers.append({
 		"x": center_cell.x,
@@ -304,8 +306,13 @@ func _try_place_configured_poi(
 		"torch_sites": _vector2i_array_to_dict_array(torch_sites),
 		"room_content_plans": _room_content_plan_array_to_dict_array(room_content_plans),
 	})
-	_append_room_content_sites(map_data, room_content_plans, config)
-	_place_poi_center_cluster(map_data, main_room_rect, template_dict, config, rng)
+	_append_room_content_sites(
+		map_data,
+		room_content_plans,
+		config,
+		str(template_dict.get("id", ""))
+	)
+	_place_poi_center_cluster(map_data, main_room_rect, template_dict, config, rng, room_content_plans)
 	return true
 
 
@@ -915,6 +922,16 @@ func _room_content_plan_array_to_dict_array(plans: Array[Dictionary]) -> Array[D
 		var converted: Dictionary = plan.duplicate(true)
 		var anchor_cell: Vector2i = converted.get("anchor_cell", Vector2i.ZERO) as Vector2i
 		converted["anchor_cell"] = _vector2i_to_dict(anchor_cell)
+		if converted.get("room_rect", null) is Rect2i:
+			converted["room_rect"] = _rect_to_dict(converted.get("room_rect", Rect2i()) as Rect2i)
+		if converted.get("chest_cell", null) is Vector2i:
+			converted["chest_cell"] = _vector2i_to_dict(
+				converted.get("chest_cell", Vector2i.ZERO) as Vector2i
+			)
+		if converted.get("guard_sites", null) is Array:
+			converted["guard_sites"] = _guard_site_array_to_dict_array(
+				converted.get("guard_sites", []) as Array
+			)
 		dicts.append(converted)
 	return dicts
 
@@ -922,7 +939,8 @@ func _room_content_plan_array_to_dict_array(plans: Array[Dictionary]) -> Array[D
 func _append_room_content_sites(
 	map_data: WdcMapGenerationTypes.MapData,
 	room_content_plans: Array[Dictionary],
-	config: WdcMapGenerationTypes.MapConfig
+	config: WdcMapGenerationTypes.MapConfig,
+	poi_template_id: String = ""
 ) -> void:
 	var isolated_templates: Array[Dictionary] = _extract_dictionary_array(
 		config.get_meta("isolated_spawn_templates", [])
@@ -935,10 +953,10 @@ func _append_room_content_sites(
 		if content_kind == "none":
 			continue
 		var template_id: String = str(plan.get("template_id", ""))
-		if template_id.is_empty():
-			continue
 		var anchor_cell: Vector2i = plan.get("anchor_cell", Vector2i.ZERO) as Vector2i
 		if content_kind == "monster_pack":
+			if template_id.is_empty():
+				continue
 			var spawn_template: Dictionary = _find_template_by_id(isolated_templates, template_id)
 			if spawn_template.is_empty():
 				continue
@@ -951,6 +969,8 @@ func _append_room_content_sites(
 				"layer_id": str(plan.get("layer_id", "")),
 			})
 		elif content_kind == "nest":
+			if template_id.is_empty():
+				continue
 			var nest_template: Dictionary = _find_template_by_id(nest_templates, template_id)
 			if nest_template.is_empty():
 				continue
@@ -968,6 +988,47 @@ func _append_room_content_sites(
 				"max_hit_points": int(nest_template.get("max_hit_points", 0)),
 				"layer_id": str(plan.get("layer_id", "")),
 			})
+		elif content_kind == "locked_treasure_camp":
+			_append_camp_encounter(map_data, plan, poi_template_id)
+
+
+func _append_camp_encounter(
+	map_data: WdcMapGenerationTypes.MapData,
+	plan: Dictionary,
+	poi_template_id: String
+) -> void:
+	var encounter_id: String = str(plan.get("encounter_id", ""))
+	if encounter_id.is_empty():
+		encounter_id = "camp_%03d" % (map_data.camp_encounters.size() + 1)
+	var room_rect_value: Variant = plan.get("room_rect", Rect2i())
+	var room_rect: Rect2i = room_rect_value as Rect2i if room_rect_value is Rect2i else Rect2i()
+	var chest_cell: Vector2i = plan.get("chest_cell", plan.get("anchor_cell", Vector2i.ZERO)) as Vector2i
+	map_data.camp_encounters.append({
+		"encounter_id": encounter_id,
+		"poi_template_id": poi_template_id,
+		"layer_id": str(plan.get("layer_id", "")),
+		"room_index": int(plan.get("room_index", -1)),
+		"room_kind": str(plan.get("room_kind", "")),
+		"room_rect": _rect_to_dict(room_rect),
+		"chest_cell": _vector2i_to_dict(chest_cell),
+		"guard_sites": _guard_site_array_to_dict_array(plan.get("guard_sites", []) as Array),
+		"loot_container": (plan.get("loot_container", {}) as Dictionary).duplicate(true),
+		"locked_prompt_text": str(
+			plan.get("locked_prompt_text", "需要击败房间中的所有怪物")
+		),
+	})
+
+
+func _guard_site_array_to_dict_array(guard_sites: Array) -> Array[Dictionary]:
+	var dicts: Array[Dictionary] = []
+	for site_value: Variant in guard_sites:
+		if not (site_value is Dictionary):
+			continue
+		var site: Dictionary = (site_value as Dictionary).duplicate(true)
+		if site.get("cell", null) is Vector2i:
+			site["cell"] = _vector2i_to_dict(site.get("cell", Vector2i.ZERO) as Vector2i)
+		dicts.append(site)
+	return dicts
 
 
 func _vector2i_to_dict(cell: Vector2i) -> Dictionary:
@@ -1105,6 +1166,13 @@ func _build_room_content_plans(
 	return plans
 
 
+func _has_invalid_room_content_plan(plans: Array[Dictionary]) -> bool:
+	for plan: Dictionary in plans:
+		if bool(plan.get("invalid", false)):
+			return true
+	return false
+
+
 func _collect_room_door_cells(room_index: int, corridor_plans: Array[Dictionary]) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
 	for corridor_plan: Dictionary in corridor_plans:
@@ -1128,8 +1196,10 @@ func _roll_room_content_plan(
 	var none_weight: float = maxf(float(room_cfg.get("none_weight", 0.0)), 0.0)
 	var monster_entries: Array = room_cfg.get("monster_entries", []) as Array
 	var nest_entries: Array = room_cfg.get("nest_entries", []) as Array
+	var camp_entries: Array = room_cfg.get("camp_entries", []) as Array
 	var monster_weight_total: float = _sum_entry_weights(monster_entries)
 	var nest_weight_total: float = _sum_entry_weights(nest_entries)
+	var camp_weight_total: float = _sum_entry_weights(camp_entries)
 	var layer: Dictionary = _resolve_layer_for_rect_center(config, null, room_rect)
 	var danger_multiplier: float = maxf(
 		float(layer.get("room_content_danger_multiplier", 1.0)),
@@ -1138,10 +1208,12 @@ func _roll_room_content_plan(
 	if danger_multiplier > 0.0:
 		monster_weight_total *= danger_multiplier
 		nest_weight_total *= danger_multiplier
+		camp_weight_total *= danger_multiplier
 		none_weight = none_weight / danger_multiplier
-	var total_weight: float = none_weight + monster_weight_total + nest_weight_total
+	var total_weight: float = none_weight + monster_weight_total + nest_weight_total + camp_weight_total
 	var content_kind: String = "none"
 	var template_id: String = ""
+	var camp_entry: Dictionary = {}
 	if total_weight > 0.0:
 		var roll: float = rng.randf() * total_weight
 		if roll <= none_weight:
@@ -1149,9 +1221,13 @@ func _roll_room_content_plan(
 		elif roll <= none_weight + monster_weight_total:
 			content_kind = "monster_pack"
 			template_id = _pick_weighted_entry_id(monster_entries, "spawn_template_id", rng)
-		else:
+		elif roll <= none_weight + monster_weight_total + nest_weight_total:
 			content_kind = "nest"
 			template_id = _pick_weighted_entry_id(nest_entries, "nest_template_id", rng)
+		else:
+			content_kind = "locked_treasure_camp"
+			camp_entry = _pick_weighted_entry(camp_entries, rng)
+			template_id = str(camp_entry.get("id", ""))
 	var anchor_cell: Vector2i = _resolve_room_content_anchor(
 		room_rect,
 		door_cells,
@@ -1159,14 +1235,26 @@ func _roll_room_content_plan(
 		maxi(int(center_cluster_cfg.get("avoid_radius_cells", 0)), 0),
 		room_kind == "main"
 	)
-	return {
+	var plan: Dictionary = {
 		"room_index": room_index,
 		"room_kind": room_kind,
+		"room_rect": room_rect,
 		"content_kind": content_kind,
 		"template_id": template_id,
 		"anchor_cell": anchor_cell,
 		"layer_id": str(layer.get("id", "")),
 	}
+	if content_kind == "locked_treasure_camp":
+		_apply_locked_treasure_camp_plan(
+			plan,
+			room_rect,
+			door_cells,
+			room_cfg,
+			camp_entry,
+			config,
+			rng
+		)
+	return plan
 
 
 func _sum_entry_weights(entries: Array) -> float:
@@ -1196,6 +1284,149 @@ func _pick_weighted_entry_id(
 		if roll <= cumulative:
 			return str(entry.get(id_key, ""))
 	return ""
+
+
+func _pick_weighted_entry(entries: Array, rng: RandomNumberGenerator) -> Dictionary:
+	var total_weight: float = _sum_entry_weights(entries)
+	if total_weight <= 0.0:
+		return {}
+	var roll: float = rng.randf() * total_weight
+	var cumulative: float = 0.0
+	for entry_value: Variant in entries:
+		if not (entry_value is Dictionary):
+			continue
+		var entry: Dictionary = entry_value as Dictionary
+		cumulative += maxf(float(entry.get("weight", 0.0)), 0.0)
+		if roll <= cumulative:
+			return entry.duplicate(true)
+	return {}
+
+
+func _apply_locked_treasure_camp_plan(
+	plan: Dictionary,
+	room_rect: Rect2i,
+	door_cells: Array[Vector2i],
+	room_cfg: Dictionary,
+	camp_entry: Dictionary,
+	config: WdcMapGenerationTypes.MapConfig,
+	rng: RandomNumberGenerator
+) -> void:
+	if camp_entry.is_empty():
+		plan["invalid"] = true
+		return
+	var chest_cell: Vector2i = _rect_center_cell(room_rect)
+	var guard_count_min: int = maxi(int(camp_entry.get("guard_count_min", 1)), 1)
+	var guard_count_max: int = maxi(
+		int(camp_entry.get("guard_count_max", guard_count_min)),
+		guard_count_min
+	)
+	var guard_count: int = rng.randi_range(guard_count_min, guard_count_max)
+	var chest_avoid_radius: int = maxi(int(camp_entry.get("chest_avoid_radius_cells", 1)), 0)
+	var min_distance_from_doors: int = maxi(
+		int(
+			camp_entry.get(
+				"min_distance_from_door_cells",
+				room_cfg.get("min_distance_from_door_cells", 0)
+			)
+		),
+		0
+	)
+	var guard_cells: Array[Vector2i] = _pick_camp_guard_cells(
+		room_rect,
+		door_cells,
+		chest_cell,
+		min_distance_from_doors,
+		chest_avoid_radius,
+		guard_count,
+		rng
+	)
+	if guard_cells.size() < guard_count_min:
+		plan["invalid"] = true
+		return
+	guard_count = mini(guard_count, guard_cells.size())
+	var guard_entries: Array = camp_entry.get("guard_entries", []) as Array
+	var isolated_templates: Array[Dictionary] = _extract_dictionary_array(
+		config.get_meta("isolated_spawn_templates", [])
+	)
+	var guard_sites: Array[Dictionary] = []
+	for guard_index: int in range(guard_count):
+		var guard_entry: Dictionary = _pick_weighted_entry(guard_entries, rng)
+		var spawn_template_id: String = str(guard_entry.get("spawn_template_id", ""))
+		var monster_id: String = str(guard_entry.get("monster_id", ""))
+		if monster_id.is_empty() and not spawn_template_id.is_empty():
+			var spawn_template: Dictionary = _find_template_by_id(isolated_templates, spawn_template_id)
+			monster_id = str(spawn_template.get("monster_id", ""))
+		if monster_id.is_empty():
+			plan["invalid"] = true
+			return
+		guard_sites.append({
+			"cell": guard_cells[guard_index],
+			"monster_id": monster_id,
+			"template_id": spawn_template_id,
+		})
+	plan["encounter_id"] = str(camp_entry.get("encounter_id", ""))
+	plan["chest_cell"] = chest_cell
+	plan["guard_sites"] = guard_sites
+	plan["loot_container"] = _normalize_camp_loot_container(camp_entry.get("loot_container", {}))
+	plan["locked_prompt_text"] = str(
+		camp_entry.get("locked_prompt_text", "需要击败房间中的所有怪物")
+	)
+
+
+func _pick_camp_guard_cells(
+	room_rect: Rect2i,
+	door_cells: Array[Vector2i],
+	chest_cell: Vector2i,
+	min_distance_from_doors: int,
+	chest_avoid_radius: int,
+	guard_count: int,
+	rng: RandomNumberGenerator
+) -> Array[Vector2i]:
+	var candidates: Array[Vector2i] = []
+	for y: int in range(room_rect.position.y, room_rect.position.y + room_rect.size.y):
+		for x: int in range(room_rect.position.x, room_rect.position.x + room_rect.size.x):
+			var candidate: Vector2i = Vector2i(x, y)
+			if candidate == chest_cell:
+				continue
+			if candidate.distance_to(chest_cell) <= float(chest_avoid_radius):
+				continue
+			var blocked_by_door: bool = false
+			for door_cell: Vector2i in door_cells:
+				if candidate.distance_to(door_cell) < float(min_distance_from_doors):
+					blocked_by_door = true
+					break
+			if blocked_by_door:
+				continue
+			candidates.append(candidate)
+	var selected: Array[Vector2i] = []
+	while not candidates.is_empty() and selected.size() < guard_count:
+		var pick_index: int = rng.randi_range(0, candidates.size() - 1)
+		selected.append(candidates[pick_index])
+		candidates.remove_at(pick_index)
+	return selected
+
+
+func _normalize_camp_loot_container(value: Variant) -> Dictionary:
+	var container: Dictionary = {}
+	if value is Dictionary:
+		container = (value as Dictionary).duplicate(true)
+	container["container_kind"] = str(container.get("container_kind", "loot_container"))
+	container["container_title"] = str(container.get("container_title", "营地宝箱"))
+	container["visual_kind"] = str(container.get("visual_kind", "treasure_chest"))
+	container["grid_width"] = maxi(int(container.get("grid_width", 4)), 1)
+	container["grid_height"] = maxi(int(container.get("grid_height", 2)), 1)
+	container["slot_columns"] = maxi(
+		int(container.get("slot_columns", container.get("grid_width", 4))),
+		1
+	)
+	container["blocked_cells"] = (container.get("blocked_cells", []) as Array).duplicate(true)
+	container["slot_snapshots"] = (container.get("slot_snapshots", []) as Array).duplicate(true)
+	container["placement_snapshots"] = (
+		container.get("placement_snapshots", container.get("placements", [])) as Array
+	).duplicate(true)
+	container["destroy_when_empty"] = bool(container.get("destroy_when_empty", false))
+	container["empty_cleanup_delay_sec"] = float(container.get("empty_cleanup_delay_sec", 8.0))
+	return container
 
 
 func _resolve_room_content_anchor(
@@ -1268,8 +1499,14 @@ func _place_poi_center_cluster(
 	main_room_rect: Rect2i,
 	template_dict: Dictionary,
 	config: WdcMapGenerationTypes.MapConfig,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	room_content_plans: Array[Dictionary] = []
 ) -> void:
+	for plan: Dictionary in room_content_plans:
+		if int(plan.get("room_index", -1)) != 0:
+			continue
+		if str(plan.get("content_kind", "")) == "locked_treasure_camp":
+			return
 	var content: Dictionary = template_dict.get("content", {}) as Dictionary
 	var center_cluster: Dictionary = content.get("center_ore_cluster", {}) as Dictionary
 	if not bool(center_cluster.get("enabled", false)):

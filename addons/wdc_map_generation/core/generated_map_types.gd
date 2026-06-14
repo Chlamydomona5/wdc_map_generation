@@ -349,6 +349,7 @@ class MapData:
 	var player_spawn_points: Array[Dictionary] = []
 	var extraction_sites: Array[Dictionary] = []
 	var monster_sites: Array[Dictionary] = []
+	var camp_encounters: Array[Dictionary] = []
 	var trap_sites: Array[Dictionary] = []
 	var total_floor: int = 0
 	var large_pois: int = 0
@@ -401,6 +402,8 @@ class MapData:
 			copied.extraction_sites.append(extraction_site.duplicate(true))
 		for monster_site: Dictionary in monster_sites:
 			copied.monster_sites.append(monster_site.duplicate(true))
+		for camp_encounter: Dictionary in camp_encounters:
+			copied.camp_encounters.append(camp_encounter.duplicate(true))
 		for trap_site: Dictionary in trap_sites:
 			copied.trap_sites.append(trap_site.duplicate(true))
 		copied.total_floor = total_floor

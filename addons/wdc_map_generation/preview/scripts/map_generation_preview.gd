@@ -25,6 +25,8 @@ const COLOR_PLAYER_SPAWN: Color = Color(0.95, 0.95, 0.95, 1.0)
 const COLOR_EXTRACTION_SITE: Color = Color(0.28, 0.62, 1.0, 1.0)
 const COLOR_MONSTER_SITE: Color = Color(0.24, 0.95, 0.40, 1.0)
 const COLOR_NEST_SITE: Color = Color(0.92, 0.24, 0.24, 1.0)
+const COLOR_CAMP_GUARD_SITE: Color = Color(0.38, 1.0, 0.58, 1.0)
+const COLOR_CAMP_CHEST_SITE: Color = Color(1.0, 0.72, 0.16, 1.0)
 const COLOR_TRAP: Color = Color(0.95, 0.35, 0.20, 1.0)
 const PREVIEW_MIN_ZOOM: float = 0.25
 const PREVIEW_MAX_ZOOM: float = 48.0
@@ -50,13 +52,16 @@ const PARAMETER_LABELS: Dictionary = {
 	"boundary_noise_seed_offset": "边界噪声种子偏移",
 	"bend_order_mode": "转弯顺序模式",
 	"candidate_neighbors_per_room": "每房间候选邻居数",
+	"camp_entries": "营地宝箱权重条目",
 	"cell_size_m": "单格尺寸",
 	"center_ore_cluster": "中心矿簇",
+	"chest_avoid_radius_cells": "宝箱避让半径",
 	"cluster_override_id": "矿簇覆盖 ID",
 	"cluster_overrides": "矿簇覆盖列表",
 	"cluster_types": "矿簇类型列表",
 	"connectivity": "连通性",
 	"content": "内容配置",
+	"container_title": "容器标题",
 	"corridor": "走廊配置",
 	"count": "数量",
 	"count_max": "最大数量",
@@ -82,6 +87,11 @@ const PARAMETER_LABELS: Dictionary = {
 	"global": "全局配置",
 	"global_corridors": "全局走廊",
 	"global_distribution": "全局分布",
+	"grid_height": "容器格子高度",
+	"grid_width": "容器格子宽度",
+	"guard_count_max": "最大守卫数量",
+	"guard_count_min": "最小守卫数量",
+	"guard_entries": "守卫权重条目",
 	"height_cells": "地图高度格数",
 	"height_max": "最大高度",
 	"height_min": "最小高度",
@@ -91,6 +101,7 @@ const PARAMETER_LABELS: Dictionary = {
 	"layer_distribution": "层级分布",
 	"layer_id": "层级",
 	"loot_table_id": "掉落表 ID",
+	"loot_container": "搜刮容器",
 	"main_room": "主房间",
 	"main_room_roll": "主房间内容随机表",
 	"map": "地图基础配置",
@@ -130,6 +141,7 @@ const PARAMETER_LABELS: Dictionary = {
 	"placement_attempts_per_poi": "每个 POI 放置尝试次数",
 	"placement_radius_max_cells": "最大放置半径",
 	"placement_radius_min_cells": "最小放置半径",
+	"placement_snapshots": "放置快照",
 	"player_spawn": "玩家出生点",
 	"poi_attempts": "POI 尝试次数",
 	"poi_budget_weight": "POI 预算权重",
@@ -151,6 +163,7 @@ const PARAMETER_LABELS: Dictionary = {
 	"show_room_labels": "显示房间标签",
 	"show_spawn_sites": "显示刷怪点",
 	"smooth_iterations": "平滑迭代次数",
+	"slot_snapshots": "槽位快照",
 	"spawn_interval_sec": "生成间隔秒数",
 	"spawn_probability": "生成概率",
 	"spawn_scope": "生成作用域",
@@ -171,6 +184,7 @@ const PARAMETER_LABELS: Dictionary = {
 	"width_cells": "地图宽度格数",
 	"width_max": "最大宽度",
 	"width_min": "最小宽度",
+	"visual_kind": "视觉类型",
 	"wobble_chance": "摇摆概率"
 }
 const PARAMETER_DESCRIPTIONS: Dictionary = {
@@ -684,13 +698,15 @@ func _rebuild_preview(randomize_seed: bool) -> void:
 	_seed_label.text = "种子：%d" % _preview_seed
 	var site_summary: Dictionary = _build_site_status_summary(map_data)
 	_set_status(
-		"预览已重建：文件=%s 尺寸=%sx%s 出生=%d 撤离=%d inner=%d middle=%d fallback=%d"
+		"预览已重建：文件=%s 尺寸=%sx%s 出生=%d 撤离=%d 怪物点=%d 营地=%d inner=%d middle=%d fallback=%d"
 		% [
 			_current_config_filename,
 			map_data.width,
 			map_data.height,
 			int(site_summary.get("spawn_count", 0)),
 			int(site_summary.get("extraction_count", 0)),
+			int(site_summary.get("monster_site_count", 0)),
+			int(site_summary.get("camp_count", 0)),
 			int(site_summary.get("inner_count", 0)),
 			int(site_summary.get("middle_count", 0)),
 			int(site_summary.get("fallback_count", 0)),
@@ -929,6 +945,25 @@ func _build_map_preview_image(map_data: WdcMapGenerationTypes.MapData) -> Image:
 			var site: Dictionary = site_value as Dictionary
 			var site_color: Color = COLOR_NEST_SITE if str(site.get("site_kind", "")) == "nest" else COLOR_MONSTER_SITE
 			_paint_cross(image, _vector2i_from_variant(site.get("cell", Vector2i.ZERO)), site_color, map_data.height)
+	for camp_value: Variant in map_data.camp_encounters:
+		if not (camp_value is Dictionary):
+			continue
+		var camp: Dictionary = camp_value as Dictionary
+		_paint_point(
+			image,
+			_vector2i_from_variant(camp.get("chest_cell", Vector2i.ZERO)),
+			COLOR_CAMP_CHEST_SITE,
+			map_data.height
+		)
+		for guard_site_value: Variant in camp.get("guard_sites", []) as Array:
+			if guard_site_value is Dictionary:
+				var guard_site: Dictionary = guard_site_value as Dictionary
+				_paint_cross(
+					image,
+					_vector2i_from_variant(guard_site.get("cell", Vector2i.ZERO)),
+					COLOR_CAMP_GUARD_SITE,
+					map_data.height
+				)
 	for trap_site_value: Variant in map_data.trap_sites:
 		if trap_site_value is Dictionary:
 			var trap_site: Dictionary = trap_site_value as Dictionary
@@ -944,6 +979,8 @@ func _build_site_status_summary(map_data: WdcMapGenerationTypes.MapData) -> Dict
 	var summary: Dictionary = {
 		"spawn_count": 0,
 		"extraction_count": 0,
+		"monster_site_count": 0,
+		"camp_count": 0,
 		"inner_count": 0,
 		"middle_count": 0,
 		"fallback_count": 0,
@@ -952,6 +989,8 @@ func _build_site_status_summary(map_data: WdcMapGenerationTypes.MapData) -> Dict
 		return summary
 	summary["spawn_count"] = map_data.player_spawn_points.size()
 	summary["extraction_count"] = map_data.extraction_sites.size()
+	summary["monster_site_count"] = map_data.monster_sites.size()
+	summary["camp_count"] = map_data.camp_encounters.size()
 	for spawn_point: Dictionary in map_data.player_spawn_points:
 		if str(spawn_point.get("fallback_reason", "")).strip_edges() != "":
 			summary["fallback_count"] = int(summary["fallback_count"]) + 1
@@ -976,6 +1015,21 @@ func _resolve_cell_site_hover_info(cell: Vector2i) -> String:
 	for extraction_site: Dictionary in _current_map_data.extraction_sites:
 		if _vector2i_from_variant(extraction_site) == cell:
 			parts.append(_format_site_hover_line("撤离点", extraction_site))
+	for site: Dictionary in _current_map_data.monster_sites:
+		if _vector2i_from_variant(site.get("cell", Vector2i.ZERO)) == cell:
+			parts.append(_format_monster_site_hover_line(site))
+	for camp_value: Variant in _current_map_data.camp_encounters:
+		if not (camp_value is Dictionary):
+			continue
+		var camp: Dictionary = camp_value as Dictionary
+		if _vector2i_from_variant(camp.get("chest_cell", Vector2i.ZERO)) == cell:
+			parts.append(_format_camp_chest_hover_line(camp))
+		for guard_site_value: Variant in camp.get("guard_sites", []) as Array:
+			if not (guard_site_value is Dictionary):
+				continue
+			var guard_site: Dictionary = guard_site_value as Dictionary
+			if _vector2i_from_variant(guard_site.get("cell", Vector2i.ZERO)) == cell:
+				parts.append(_format_camp_guard_hover_line(camp, guard_site))
 	return "\n".join(parts)
 
 
@@ -993,6 +1047,52 @@ func _format_site_hover_line(label: String, site: Dictionary) -> String:
 	if fields.is_empty():
 		return label
 	return "%s（%s）" % [label, "，".join(fields)]
+
+
+func _format_monster_site_hover_line(site: Dictionary) -> String:
+	var site_kind: String = str(site.get("site_kind", "")).strip_edges()
+	var label: String = "怪物生成点" if site_kind != "nest" else "怪物巢穴点"
+	var fields: Array[String] = []
+	_append_hover_field(fields, "类型", site_kind)
+	_append_hover_field(fields, "怪物", str(site.get("monster_id", "")).strip_edges())
+	_append_hover_field(fields, "模板", str(site.get("template_id", "")).strip_edges())
+	_append_hover_field(fields, "房间", str(site.get("room_kind", "")).strip_edges())
+	_append_hover_field(fields, "层级", str(site.get("layer_id", "")).strip_edges())
+	return label if fields.is_empty() else "%s（%s）" % [label, "，".join(fields)]
+
+
+func _format_camp_chest_hover_line(camp: Dictionary) -> String:
+	var fields: Array[String] = []
+	var loot_container: Dictionary = (
+		(camp.get("loot_container", {}) as Dictionary)
+		if camp.get("loot_container", {}) is Dictionary
+		else {}
+	)
+	_append_hover_field(fields, "遭遇", str(camp.get("encounter_id", "")).strip_edges())
+	_append_hover_field(fields, "房间", str(camp.get("room_kind", "")).strip_edges())
+	_append_hover_field(fields, "层级", str(camp.get("layer_id", "")).strip_edges())
+	_append_hover_field(
+		fields,
+		"容器",
+		str(loot_container.get("container_title", "营地宝箱")).strip_edges()
+	)
+	return "营地宝箱" if fields.is_empty() else "营地宝箱（%s）" % "，".join(fields)
+
+
+func _format_camp_guard_hover_line(camp: Dictionary, guard_site: Dictionary) -> String:
+	var fields: Array[String] = []
+	_append_hover_field(fields, "遭遇", str(camp.get("encounter_id", "")).strip_edges())
+	_append_hover_field(fields, "怪物", str(guard_site.get("monster_id", "")).strip_edges())
+	_append_hover_field(fields, "模板", str(guard_site.get("template_id", "")).strip_edges())
+	_append_hover_field(fields, "房间", str(camp.get("room_kind", "")).strip_edges())
+	_append_hover_field(fields, "层级", str(camp.get("layer_id", "")).strip_edges())
+	return "营地守卫点" if fields.is_empty() else "营地守卫点（%s）" % "，".join(fields)
+
+
+func _append_hover_field(fields: Array[String], label: String, value: String) -> void:
+	if label.is_empty() or value.is_empty():
+		return
+	fields.append("%s=%s" % [label, value])
 
 
 func _resolve_map_cell_color(cell: WdcMapGenerationTypes.CellData) -> Color:
