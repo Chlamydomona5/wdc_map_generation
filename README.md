@@ -15,3 +15,9 @@
 
 主仓应通过 `map_generation/addons/wdc_map_generation/` 引用生成能力，并保留 gameplay runtime adapter。正式战局的地图真相仍由主仓 authority runtime 持有，submodule 只提供纯生成、配置和预览工具能力。
 
+## 纯 C# 生成
+
+`csharp/` 提供独立的 .NET 8 地图生成类库和 xUnit 测试，不依赖 Godot 或 GodotSharp。它直接读取 `addons/wdc_map_generation/config/generated_map_configs/` 中的现有 JSON 配置，返回完整 `MapData`，并可通过 `ToTileMatrix()` 导出 `ServerTileType` 矩阵。
+
+C# 版本保证自身固定 seed 可复现，但不要求与 GDScript 同 seed 逐格一致，也不接入主仓 authority、网络、spawn、visibility、preview 或 tile loot 链路。具体 API、边界和验证命令见 `csharp/README.md`。
+
