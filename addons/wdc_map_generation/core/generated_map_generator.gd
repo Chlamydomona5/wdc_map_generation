@@ -16,6 +16,7 @@ const STAGE_CORRIDOR: StringName = &"CORRIDOR"
 const STAGE_TRACE: StringName = &"TRACE"
 const STAGE_MINERAL: StringName = &"MINERAL"
 const STAGE_TRAP: StringName = &"TRAP"
+const PLAYER_SPAWN_HARD_MIN_DISTANCE_CELLS: float = 6.0
 
 
 func generate_full(config: WdcMapGenerationTypes.MapConfig) -> WdcMapGenerationTypes.MapData:
@@ -3210,6 +3211,15 @@ func _select_layer_site_cells(
 		)
 		if selected_cells.size() >= target_count:
 			break
+	if site_kind == "player_spawn" and selected_cells.size() < target_count:
+		map_data.set_meta(
+			"player_spawn_shortfall",
+			maxi(target_count - selected_cells.size(), 0)
+		)
+		push_warning(
+			"WdcMapGenerationGenerator: 玩家出生锚点不足 actual=%d target=%d hard_distance=%.2f"
+			% [selected_cells.size(), target_count, PLAYER_SPAWN_HARD_MIN_DISTANCE_CELLS]
+		)
 	return selected_cells
 
 
@@ -3294,7 +3304,37 @@ func _append_site_cells_from_pass(
 	fallback_reason: String,
 	site_kind: String
 ) -> void:
-	var min_between_sq: float = min_distance_between_sites_cells * min_distance_between_sites_cells
+	var resolved_enforce_between_distance: bool = enforce_between_distance
+	var resolved_min_distance_between_sites_cells: float = min_distance_between_sites_cells
+	if site_kind == "player_spawn":
+		resolved_min_distance_between_sites_cells = maxf(
+			(
+				resolved_min_distance_between_sites_cells
+				if resolved_enforce_between_distance
+				else 0.0
+			),
+			PLAYER_SPAWN_HARD_MIN_DISTANCE_CELLS
+		)
+		resolved_enforce_between_distance = true
+		_append_player_spawn_cells_max_min_from_pass(
+			map_data,
+			candidates,
+			selected_cells,
+			used_keys,
+			target_count,
+			resolved_min_distance_between_sites_cells,
+			require_floor,
+			require_clearance,
+			require_avoid_distance,
+			resolved_enforce_between_distance,
+			fallback_reason,
+			site_kind
+		)
+		return
+	var min_between_sq: float = (
+		resolved_min_distance_between_sites_cells
+		* resolved_min_distance_between_sites_cells
+	)
 	for candidate: Dictionary in candidates:
 		if selected_cells.size() >= target_count:
 			return
@@ -3308,7 +3348,7 @@ func _append_site_cells_from_pass(
 		var key: String = _key(cell.x, cell.y)
 		if bool(used_keys.get(key, false)):
 			continue
-		if enforce_between_distance and min_between_sq > 0.0:
+		if resolved_enforce_between_distance and min_between_sq > 0.0:
 			var too_close: bool = false
 			for selected_cell: Vector2i in selected_cells:
 				var candidate_point: Vector2 = Vector2(float(cell.x), float(cell.y))
@@ -3324,6 +3364,62 @@ func _append_site_cells_from_pass(
 		selected_cells.append(cell)
 		if not fallback_reason.is_empty():
 			_record_site_fallback_reason(map_data, cell, site_kind, fallback_reason)
+
+
+## 方法职责：在同一 fallback pass 内以 max-min 规则选择玩家出生锚点。
+## 边界约束：候选排序只负责首点与同分决胜，后续点优先最大化到已选点的最小距离。
+func _append_player_spawn_cells_max_min_from_pass(
+	map_data: WdcMapGenerationTypes.MapData,
+	candidates: Array[Dictionary],
+	selected_cells: Array[Vector2i],
+	used_keys: Dictionary,
+	target_count: int,
+	min_distance_between_sites_cells: float,
+	require_floor: bool,
+	require_clearance: bool,
+	require_avoid_distance: bool,
+	enforce_between_distance: bool,
+	fallback_reason: String,
+	site_kind: String
+) -> void:
+	var min_between_sq: float = min_distance_between_sites_cells * min_distance_between_sites_cells
+	while selected_cells.size() < target_count:
+		var best_candidate: Dictionary = {}
+		var best_min_distance_sq: float = -1.0
+		for candidate: Dictionary in candidates:
+			if require_floor and not bool(candidate.get("is_floor", false)):
+				continue
+			if require_clearance and not bool(candidate.get("clearance_ok", false)):
+				continue
+			if require_avoid_distance and not bool(candidate.get("avoid_distance_ok", false)):
+				continue
+			var cell: Vector2i = candidate.get("cell", Vector2i(-1, -1))
+			if bool(used_keys.get(_key(cell.x, cell.y), false)):
+				continue
+			var nearest_selected_distance_sq: float = INF
+			for selected_cell: Vector2i in selected_cells:
+				nearest_selected_distance_sq = minf(
+					nearest_selected_distance_sq,
+					Vector2(float(cell.x), float(cell.y)).distance_squared_to(
+						Vector2(float(selected_cell.x), float(selected_cell.y))
+					)
+				)
+			if selected_cells.is_empty():
+				nearest_selected_distance_sq = 0.0
+			elif enforce_between_distance and nearest_selected_distance_sq < min_between_sq:
+				continue
+			if best_candidate.is_empty() or nearest_selected_distance_sq > best_min_distance_sq:
+				best_candidate = candidate
+				best_min_distance_sq = nearest_selected_distance_sq
+		if best_candidate.is_empty():
+			return
+		var selected_cell: Vector2i = best_candidate.get("cell", Vector2i(-1, -1))
+		if not bool(best_candidate.get("is_floor", false)):
+			_carve_site_floor_cell(map_data, selected_cell)
+		used_keys[_key(selected_cell.x, selected_cell.y)] = true
+		selected_cells.append(selected_cell)
+		if not fallback_reason.is_empty():
+			_record_site_fallback_reason(map_data, selected_cell, site_kind, fallback_reason)
 
 
 func _build_site_entry(

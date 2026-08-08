@@ -8,9 +8,9 @@ const WdcMapGenerationTypes = preload("generated_map_types.gd")
 
 
 static var _mineral_wall_weighted_entries: Array[Dictionary] = [
-	{"item_id": "coal_ore", "min_count": 1, "max_count": 2, "weight": 6},
-	{"item_id": "iron_ore", "min_count": 1, "max_count": 2, "weight": 3},
-	{"item_id": "gold_ore", "min_count": 1, "max_count": 1, "weight": 1},
+	{"item_id": "coal_ore", "min_count": 1, "max_count": 4, "weight": 6},
+	{"item_id": "iron_ore", "min_count": 1, "max_count": 4, "weight": 3},
+	{"item_id": "gold_ore", "min_count": 1, "max_count": 2, "weight": 1},
 ]
 
 
@@ -22,25 +22,25 @@ static var _drop_definitions: Dictionary = {
 	WdcMapGenerationTypes.ServerTileType.RARE_MINERAL_WALL: {
 		"item_id": "gold_ore",
 		"min_count": 1,
-		"max_count": 2,
+		"max_count": 4,
 		"source_kind": "generated_map_rare_mineral_wall",
 	},
 	WdcMapGenerationTypes.ServerTileType.TURQUOISE_ORE: {
 		"item_id": "turquoise_gem",
 		"min_count": 1,
-		"max_count": 2,
+		"max_count": 4,
 		"source_kind": "generated_map_turquoise_ore",
 	},
 	WdcMapGenerationTypes.ServerTileType.AMETHYST_ORE: {
 		"item_id": "amethyst_gem",
 		"min_count": 1,
-		"max_count": 2,
+		"max_count": 4,
 		"source_kind": "generated_map_amethyst_ore",
 	},
 	WdcMapGenerationTypes.ServerTileType.GOLD_BLOCK: {
 		"item_id": "raw_gold",
 		"min_count": 1,
-		"max_count": 2,
+		"max_count": 4,
 		"source_kind": "generated_map_gold_block",
 	},
 }
@@ -130,6 +130,22 @@ static func build_inventory_slot_snapshots(
 	)
 
 
+## 方法职责：只解析一次 tile 破坏奖励，供入包与落地回退共同消费。
+static func build_tile_reward_slot_snapshots(
+	tile_type: int,
+	rng: RandomNumberGenerator = null
+) -> Array:
+	var inventory_definition: Dictionary = (
+		_inventory_grant_definitions.get(tile_type, {}) as Dictionary
+	)
+	if not inventory_definition.is_empty():
+		return _build_slot_snapshots_from_definition(inventory_definition, rng)
+	return _build_slot_snapshots_from_definition(
+		_drop_definitions.get(tile_type, {}) as Dictionary,
+		rng
+	)
+
+
 static func build_loot_slot_snapshots(tile_type: int, rng: RandomNumberGenerator = null) -> Array:
 	return _build_slot_snapshots_from_definition(
 		_drop_definitions.get(tile_type, {}) as Dictionary,
@@ -139,6 +155,30 @@ static func build_loot_slot_snapshots(tile_type: int, rng: RandomNumberGenerator
 
 static func get_drop_definition(tile_type: int) -> Dictionary:
 	return (_drop_definitions.get(tile_type, {}) as Dictionary).duplicate(true)
+
+
+## 方法职责：构造从最小数量到最大数量的递减权重表。
+static func build_count_weight_table(min_count: int, max_count: int) -> Array[Dictionary]:
+	var resolved_min: int = maxi(min_count, 1)
+	var resolved_max: int = maxi(max_count, resolved_min)
+	var entries: Array[Dictionary] = []
+	for count: int in range(resolved_min, resolved_max + 1):
+		entries.append({
+			"count": count,
+			"weight": resolved_max - count + 1,
+		})
+	return entries
+
+
+## 方法职责：计算递减数量权重对应的数学期望，供经济报告复用。
+static func compute_weighted_expected_count(min_count: int, max_count: int) -> float:
+	var total_weight: float = 0.0
+	var weighted_count: float = 0.0
+	for entry: Dictionary in build_count_weight_table(min_count, max_count):
+		var weight: float = maxf(float(entry.get("weight", 0)), 0.0)
+		total_weight += weight
+		weighted_count += float(entry.get("count", 0)) * weight
+	return weighted_count / total_weight if total_weight > 0.0 else 0.0
 
 
 static func _normalize_item_snapshot(snapshot_value: Variant) -> Dictionary:
@@ -171,13 +211,36 @@ static func _build_slot_snapshots_from_definition(
 		return []
 	var min_count: int = maxi(int(resolved_definition.get("min_count", 1)), 1)
 	var max_count: int = maxi(int(resolved_definition.get("max_count", min_count)), min_count)
-	var resolved_count: int = min_count
-	if rng != null and max_count > min_count:
-		resolved_count = rng.randi_range(min_count, max_count)
+	var resolved_count: int = _resolve_weighted_count(min_count, max_count, rng)
 	return [{
 		"item_id": item_id,
 		"count": resolved_count,
 	}]
+
+
+## 方法职责：按 `max_count - count + 1` 权重解析数量，并保持 seeded RNG 可复现。
+static func _resolve_weighted_count(
+	min_count: int,
+	max_count: int,
+	rng: RandomNumberGenerator = null
+) -> int:
+	var count_weights: Array[Dictionary] = build_count_weight_table(min_count, max_count)
+	if count_weights.is_empty():
+		return maxi(min_count, 1)
+	if rng == null or count_weights.size() == 1:
+		return int(count_weights[0].get("count", maxi(min_count, 1)))
+	var total_weight: int = 0
+	for entry: Dictionary in count_weights:
+		total_weight += maxi(int(entry.get("weight", 0)), 0)
+	if total_weight <= 0:
+		return int(count_weights[0].get("count", maxi(min_count, 1)))
+	var roll: int = rng.randi_range(1, total_weight)
+	var cumulative_weight: int = 0
+	for entry: Dictionary in count_weights:
+		cumulative_weight += maxi(int(entry.get("weight", 0)), 0)
+		if roll <= cumulative_weight:
+			return int(entry.get("count", maxi(min_count, 1)))
+	return int(count_weights[count_weights.size() - 1].get("count", maxi(min_count, 1)))
 
 
 static func _resolve_stack_definition(

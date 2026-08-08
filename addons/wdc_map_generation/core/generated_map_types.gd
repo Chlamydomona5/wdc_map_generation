@@ -106,7 +106,7 @@ class MapConfig:
 	var mineral_cluster_overrides: Array[Dictionary] = []
 	var poi_templates: Array[Dictionary] = []
 	var map_layers: Array[Dictionary] = []
-	var player_spawn_count: int = 2
+	var player_spawn_count: int = 3
 	var player_spawn_layer_id: String = "outer"
 	var player_spawn_edge_margin_cells: int = 6
 	var player_spawn_min_distance_between_spawns_cells: float = 10.0
