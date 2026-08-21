@@ -8,23 +8,19 @@
       "show_spawn_sites": true
     }
   },
-  "description": "Default gameplay config",
+  "description": "正式 PVE 配置：单个 outer 出生点与单个 inner 普通撤离点",
   "display_name": "Default Map",
   "id": "default_generated_map",
   "map": {
     "cell_size_m": 1.0,
     "extraction_sites": {
       "clearance_radius_cells": 2.0,
-      "count": 3.0,
+      "count": 1,
       "edge_margin_cells": 6.0,
       "layer_distribution": [
         {
           "layer_id": "inner",
-          "ratio": 0.800000000046566
-        },
-        {
-          "layer_id": "middle",
-          "ratio": 0.199999999953434
+          "ratio": 1.0
         }
       ],
       "min_clearance_ratio": 0.550000000046566,
@@ -34,7 +30,7 @@
     "height_cells": 128.0,
     "player_spawn": {
       "clearance_radius_cells": 2.0,
-      "count": 8.0,
+      "count": 1,
       "edge_margin_cells": 6.0,
       "layer_id": "outer",
       "min_clearance_ratio": 0.550000000046566,

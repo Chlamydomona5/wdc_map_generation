@@ -3295,7 +3295,19 @@ func _append_site_cells_from_pass(
 	site_kind: String
 ) -> void:
 	var min_between_sq: float = min_distance_between_sites_cells * min_distance_between_sites_cells
-	for candidate: Dictionary in candidates:
+	var ordered_candidates: Array[Dictionary] = candidates
+	if target_count == 1 and site_kind == "player_spawn":
+		ordered_candidates = candidates.duplicate(true)
+		ordered_candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var a_tie: int = int(a.get("tie", 0))
+			var b_tie: int = int(b.get("tie", 0))
+			if a_tie != b_tie:
+				return a_tie < b_tie
+			var a_cell: Vector2i = a.get("cell", Vector2i.ZERO)
+			var b_cell: Vector2i = b.get("cell", Vector2i.ZERO)
+			return a_cell.y < b_cell.y if a_cell.y != b_cell.y else a_cell.x < b_cell.x
+		)
+	for candidate: Dictionary in ordered_candidates:
 		if selected_cells.size() >= target_count:
 			return
 		if require_floor and not bool(candidate.get("is_floor", false)):

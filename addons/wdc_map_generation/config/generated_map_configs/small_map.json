@@ -8,14 +8,14 @@
       "show_spawn_sites": true
     }
   },
-  "description": "Small 80x80 gameplay config",
+  "description": "80x80 正式 PVE 配置：单个 outer 出生点与单个 inner 普通撤离点",
   "display_name": "SmallMap",
   "id": "small_map",
   "map": {
     "cell_size_m": 1.0,
     "height_cells": 80,
     "player_spawn": {
-      "count": 2,
+      "count": 1,
       "edge_margin_cells": 5,
       "layer_id": "outer",
       "min_distance_between_spawns_cells": 8,
@@ -23,15 +23,11 @@
       "min_clearance_ratio": 0.55
     },
     "extraction_sites": {
-      "count": 3,
+      "count": 1,
       "layer_distribution": [
         {
           "layer_id": "inner",
-          "ratio": 0.8
-        },
-        {
-          "layer_id": "middle",
-          "ratio": 0.2
+          "ratio": 1.0
         }
       ],
       "min_distance_from_player_spawns_cells": 10,

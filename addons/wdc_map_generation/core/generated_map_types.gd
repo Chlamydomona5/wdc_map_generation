@@ -106,16 +106,15 @@ class MapConfig:
 	var mineral_cluster_overrides: Array[Dictionary] = []
 	var poi_templates: Array[Dictionary] = []
 	var map_layers: Array[Dictionary] = []
-	var player_spawn_count: int = 2
+	var player_spawn_count: int = 1
 	var player_spawn_layer_id: String = "outer"
 	var player_spawn_edge_margin_cells: int = 6
 	var player_spawn_min_distance_between_spawns_cells: float = 10.0
 	var player_spawn_clearance_radius_cells: int = 2
 	var player_spawn_min_clearance_ratio: float = 0.65
-	var extraction_site_count: int = 3
+	var extraction_site_count: int = 1
 	var extraction_site_layer_distribution: Array[Dictionary] = [
-		{"layer_id": "inner", "ratio": 0.8},
-		{"layer_id": "middle", "ratio": 0.2},
+		{"layer_id": "inner", "ratio": 1.0},
 	]
 	var extraction_site_min_distance_from_player_spawns_cells: float = 12.0
 	var extraction_site_min_distance_between_sites_cells: float = 10.0
