@@ -7,6 +7,8 @@ const WdcMapGenerationTileRules = preload("generated_map_tile_rules.gd")
 signal generation_stage_completed(stage: StringName, map_data: WdcMapGenerationTypes.MapData)
 
 var last_resolved_seed: int = 0
+var last_generation_error: String = ""
+var last_generation_issues: Array[Dictionary] = []
 
 const STAGE_INIT: StringName = &"INIT"
 const STAGE_POI: StringName = &"POI"
@@ -43,6 +45,42 @@ func _build_server_payload_with_rng(
 	_rng: RandomNumberGenerator
 ) -> WdcMapGenerationTypes.MapServerPayload:
 	var payload: WdcMapGenerationTypes.MapServerPayload = WdcMapGenerationTypes.MapServerPayload.new()
+	if map_data == null:
+		payload.is_valid = false
+		payload.issues.append(WdcMapGenerationTypes.make_generation_issue(
+			"layout_mode_artifact_mismatch",
+			"map_data",
+			"",
+			"无法从空 MapData 构建 payload"
+		))
+		return payload
+	payload.layout_mode = map_data.layout_mode
+	var layout_issues: Array[Dictionary] = WdcMapGenerationTypes.validate_map_data_layout_artifacts(
+		map_data
+	)
+	if not layout_issues.is_empty():
+		payload.is_valid = false
+		payload.issues = layout_issues.duplicate(true)
+		return payload
+	if map_data.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+		var view_result: WdcMapGenerationTypes.RegionPlanViewBuildResult = (
+			WdcMapGenerationTypes.project_region_plan_view(map_data.region_plan)
+		)
+		if not view_result.is_success():
+			payload.is_valid = false
+			payload.issues = view_result.get_issues()
+			return payload
+		var view_size: Vector2i = view_result.view.get_map_size()
+		if view_size != Vector2i(map_data.width, map_data.height):
+			payload.is_valid = false
+			payload.issues.append(WdcMapGenerationTypes.make_generation_issue(
+				"invalid_region_payload",
+				"region_plan.map_size",
+				"",
+				"RegionPlanView 地图尺寸与 MapData 尺寸不一致"
+			))
+			return payload
+		payload.region_plan = view_result.view
 	payload.width = map_data.width
 	payload.height = map_data.height
 	payload.tile_matrix = _build_server_tile_matrix(map_data)
@@ -56,12 +94,47 @@ func generate_step_by_step(config: WdcMapGenerationTypes.MapConfig) -> Array[Dic
 
 
 func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapshots: bool) -> Dictionary:
+	last_generation_error = ""
+	last_generation_issues.clear()
+	if config == null:
+		return _fail_generation(
+			WdcMapGenerationTypes.make_generation_issue(
+				"invalid_region_layout_declaration",
+				"config",
+				"",
+				"地图生成配置不能为空"
+			)
+		)
+	var config_issues: Array[Dictionary] = config.get_validation_issues()
+	if not config_issues.is_empty():
+		last_generation_issues = config_issues.duplicate(true)
+		last_generation_error = str(last_generation_issues[0].get("message", "地图配置无效"))
+		return {}
+	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+		return _fail_generation(
+			WdcMapGenerationTypes.make_generation_issue(
+				"region_layout_mode_not_implemented",
+				"region_layout.mode",
+				"",
+				"pve_four_region_v1 区域生成尚未实现"
+			)
+		)
+	if config.layout_mode != WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL:
+		return _fail_generation(
+			WdcMapGenerationTypes.make_generation_issue(
+				"unsupported_region_layout_mode",
+				"region_layout.mode",
+				"",
+				"不支持的区域布局模式：%s" % config.layout_mode
+			)
+		)
 	var normalized_config: WdcMapGenerationTypes.MapConfig = config
 	normalized_config.normalize()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	last_resolved_seed = _resolve_seed(normalized_config.seed)
 	rng.seed = last_resolved_seed
 	var map_data: WdcMapGenerationTypes.MapData = WdcMapGenerationTypes.MapData.new()
+	map_data.layout_mode = normalized_config.layout_mode
 	map_data.init_grid(normalized_config.width, normalized_config.height)
 	var snapshots: Array[Dictionary] = []
 	_emit_stage(snapshots, STAGE_INIT, map_data, "INIT", capture_snapshots)
@@ -87,6 +160,16 @@ func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapsho
 		"map_data": map_data,
 		"snapshots": snapshots
 	}
+
+
+func get_last_generation_issues() -> Array[Dictionary]:
+	return last_generation_issues.duplicate(true)
+
+
+func _fail_generation(issue: Dictionary) -> Dictionary:
+	last_generation_issues = [issue.duplicate(true)]
+	last_generation_error = str(issue.get("message", "地图生成失败"))
+	return {}
 
 
 func _emit_stage(

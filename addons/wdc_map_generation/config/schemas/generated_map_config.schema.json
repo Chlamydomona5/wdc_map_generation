@@ -3,6 +3,16 @@
   "title": "WDC Generated Map Config",
   "type": "object",
   "required": ["schema_version", "id", "display_name", "map", "terrain", "minerals", "poi_generation"],
+  "allOf": [
+    {
+      "if": { "required": ["region_layout"] },
+      "then": {
+        "properties": {
+          "schema_version": { "const": 2 }
+        }
+      }
+    }
+  ],
   "properties": {
     "schema_version": { "type": "integer", "minimum": 1 },
     "id": { "type": "string", "minLength": 1 },
@@ -86,10 +96,69 @@
         ]
       }
     },
+    "region_layout": { "$ref": "#/$defs/pveFourRegionLayout" },
     "terrain": { "type": "object" },
     "minerals": { "type": "object" },
     "poi_generation": { "type": "object" },
     "monster_generation": { "type": "object" },
     "debug": { "type": "object" }
+  },
+  "$defs": {
+    "corePoi": {
+      "type": "object",
+      "required": ["template_id", "max_center_offset_cells"],
+      "properties": {
+        "template_id": { "type": "string", "minLength": 1 },
+        "max_center_offset_cells": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "regularRegion": {
+      "type": "object",
+      "required": ["id", "display_name", "content_profile_id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "content_profile_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "highRegion": {
+      "type": "object",
+      "required": ["id", "display_name", "layout_profile_id", "content_profile_id", "core_poi"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "layout_profile_id": { "type": "string", "minLength": 1 },
+        "content_profile_id": { "type": "string", "minLength": 1 },
+        "core_poi": { "$ref": "#/$defs/corePoi" }
+      },
+      "additionalProperties": false
+    },
+    "bossRegion": {
+      "type": "object",
+      "required": ["id", "display_name", "layout_profile_id", "content_profile_id", "core_poi", "encounter_profile_id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "layout_profile_id": { "type": "string", "minLength": 1 },
+        "content_profile_id": { "type": "string", "minLength": 1 },
+        "core_poi": { "$ref": "#/$defs/corePoi" },
+        "encounter_profile_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "pveFourRegionLayout": {
+      "type": "object",
+      "required": ["mode", "regular", "high_1", "high_2", "boss"],
+      "properties": {
+        "mode": { "const": "pve_four_region_v1" },
+        "regular": { "$ref": "#/$defs/regularRegion" },
+        "high_1": { "$ref": "#/$defs/highRegion" },
+        "high_2": { "$ref": "#/$defs/highRegion" },
+        "boss": { "$ref": "#/$defs/bossRegion" }
+      },
+      "additionalProperties": false
+    }
   }
 }

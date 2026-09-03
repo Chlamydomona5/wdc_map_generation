@@ -105,6 +105,110 @@ static func load_config_dict_by_filename(filename_value: Variant) -> Dictionary:
 	return {}
 
 
+static func parse_and_normalize_config(
+	raw_config_value: Variant
+) -> WdcMapGenerationTypes.GeneratedMapConfigParseResult:
+	return _parse_and_normalize_config_into(
+		raw_config_value,
+		WdcMapGenerationTypes.MapConfig.new()
+	)
+
+
+static func serialize_normalized_config(config_or_result: Variant) -> Dictionary:
+	if config_or_result is WdcMapGenerationTypes.GeneratedMapConfigParseResult:
+		var parse_result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = config_or_result
+		if not parse_result.is_success():
+			return {}
+		return parse_result.get_normalized_document()
+	# MapConfig 不保存完整源文档，不能无损恢复 POI 引用等字段；序列化只接受
+	# canonical parse result，避免未知 mode 被误写成 legacy 或四区域引用丢失。
+	return {}
+
+
+static func _parse_and_normalize_config_into(
+	raw_config_value: Variant,
+	target_config: WdcMapGenerationTypes.MapConfig
+) -> WdcMapGenerationTypes.GeneratedMapConfigParseResult:
+	var result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = (
+		WdcMapGenerationTypes.GeneratedMapConfigParseResult.new()
+	)
+	if target_config == null:
+		target_config = WdcMapGenerationTypes.MapConfig.new()
+	var issues: Array[Dictionary] = []
+	if not (raw_config_value is Dictionary):
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"",
+			"",
+			"generated-map 配置必须是 JSON 对象"
+		))
+		target_config.set_validation_issues(issues)
+		result.issues = issues.duplicate(true)
+		return result
+	var raw_config: Dictionary = (raw_config_value as Dictionary).duplicate(true)
+	var layout_mode: String = WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL
+	var normalized_region_layout: Dictionary = {}
+	# 必须先在原始 JSON 上判定字段是否出现；任何默认值注入都发生在这之后。
+	if raw_config.has("region_layout"):
+		var region_layout_value: Variant = raw_config.get("region_layout")
+		if not (region_layout_value is Dictionary):
+			issues.append(_config_issue(
+				"invalid_region_layout_declaration",
+				"region_layout",
+				"",
+				"region_layout 必须是对象，且不能为 null"
+			))
+		else:
+			var raw_region_layout: Dictionary = region_layout_value as Dictionary
+			if not raw_region_layout.has("mode"):
+				issues.append(_config_issue(
+					"invalid_region_layout_declaration",
+					"region_layout.mode",
+					"",
+					"region_layout.mode 不能为空"
+				))
+			elif typeof(raw_region_layout.get("mode")) != TYPE_STRING:
+				issues.append(_config_issue(
+					"invalid_region_layout_declaration",
+					"region_layout.mode",
+					"",
+					"region_layout.mode 必须是字符串"
+				))
+			else:
+				layout_mode = str(raw_region_layout.get("mode", "")).strip_edges()
+				if layout_mode != WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+					issues.append(_config_issue(
+						"unsupported_region_layout_mode",
+						"region_layout.mode",
+						"",
+						"不支持的区域布局模式：%s" % layout_mode
+					))
+				else:
+					_validate_region_schema_version(raw_config, issues)
+					_validate_raw_legacy_conflicts(raw_config, issues)
+					normalized_region_layout = _normalize_four_region_layout(
+						raw_config,
+						raw_region_layout,
+						issues
+					)
+	if not issues.is_empty():
+		target_config.layout_mode = layout_mode
+		target_config.set_validation_issues(issues)
+		result.issues = issues.duplicate(true)
+		return result
+	target_config.layout_mode = layout_mode
+	target_config.region_layout = normalized_region_layout.duplicate(true)
+	target_config.set_validation_issues([])
+	if layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+		target_config.map_layers.clear()
+		target_config.player_spawn_layer_id = ""
+		target_config.extraction_site_layer_distribution.clear()
+	_apply_config_dict_to_map_config_unchecked(target_config, raw_config)
+	result.config = target_config
+	result.normalized_document = _build_normalized_document(target_config, raw_config)
+	return result
+
+
 static func extract_map_dimensions(config_dict: Dictionary) -> Vector2i:
 	var map_dict: Dictionary = config_dict.get("map", {}) as Dictionary
 	return Vector2i(
@@ -131,6 +235,13 @@ static func extract_cell_size_m(config_dict: Dictionary) -> float:
 
 
 static func apply_config_dict_to_legacy_map_config(
+	config: WdcMapGenerationTypes.MapConfig,
+	config_dict: Dictionary
+) -> WdcMapGenerationTypes.GeneratedMapConfigParseResult:
+	return _parse_and_normalize_config_into(config_dict, config)
+
+
+static func _apply_config_dict_to_map_config_unchecked(
 	config: WdcMapGenerationTypes.MapConfig,
 	config_dict: Dictionary
 ) -> void:
@@ -207,9 +318,16 @@ static func apply_config_dict_to_legacy_map_config(
 		minerals_dict.get("cluster_overrides", []),
 		config.mineral_cluster_types
 	)
-	config.map_layers = _normalize_map_layers(config_dict.get("map_layers", []))
+	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL:
+		config.map_layers = _normalize_map_layers(config_dict.get("map_layers", []))
+	else:
+		config.map_layers.clear()
 	_apply_player_spawn_config(config, map_dict.get("player_spawn", {}))
-	_apply_extraction_site_config(config, map_dict.get("extraction_sites", {}))
+	_apply_extraction_site_config(
+		config,
+		map_dict.get("extraction_sites", {}),
+		config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL
+	)
 	config.poi_templates = _normalize_poi_templates(
 		(config_dict.get("poi_generation", {}) as Dictionary).get("poi_types", [])
 	)
@@ -559,7 +677,8 @@ static func _apply_player_spawn_config(
 
 static func _apply_extraction_site_config(
 	config: WdcMapGenerationTypes.MapConfig,
-	extraction_sites_value: Variant
+	extraction_sites_value: Variant,
+	allow_legacy_layer_default: bool = true
 ) -> void:
 	if not (extraction_sites_value is Dictionary):
 		return
@@ -572,7 +691,8 @@ static func _apply_extraction_site_config(
 		extraction_sites.get(
 			"layer_distribution",
 			config.extraction_site_layer_distribution
-		)
+		),
+		allow_legacy_layer_default
 	)
 	config.extraction_site_min_distance_from_player_spawns_cells = maxf(
 		float(
@@ -617,7 +737,10 @@ static func _apply_extraction_site_config(
 	)
 
 
-static func _normalize_site_layer_distribution(distribution_value: Variant) -> Array[Dictionary]:
+static func _normalize_site_layer_distribution(
+	distribution_value: Variant,
+	allow_legacy_default: bool = true
+) -> Array[Dictionary]:
 	var normalized: Array[Dictionary] = []
 	if distribution_value is Array:
 		var distribution: Array = distribution_value as Array
@@ -635,7 +758,7 @@ static func _normalize_site_layer_distribution(distribution_value: Variant) -> A
 				"layer_id": layer_id,
 				"ratio": ratio,
 			})
-	if normalized.is_empty():
+	if normalized.is_empty() and allow_legacy_default:
 		normalized = [
 			{"layer_id": "inner", "ratio": 0.8},
 			{"layer_id": "middle", "ratio": 0.2},
@@ -709,6 +832,532 @@ static func _apply_poi_template_overrides_to_builder(
 	builder.set("generated_map_trace_small_density", config.trace_small_density)
 	builder.set("generated_map_trace_small_rays", config.trace_small_rays)
 	builder.set("generated_map_trace_small_twist", config.trace_small_twist)
+
+
+static func _validate_region_schema_version(
+	raw_config: Dictionary,
+	issues: Array[Dictionary]
+) -> void:
+	var version_value: Variant = raw_config.get("schema_version", null)
+	var is_numeric: bool = typeof(version_value) == TYPE_INT or typeof(version_value) == TYPE_FLOAT
+	if (
+		not is_numeric
+		or float(version_value) != floor(float(version_value))
+		or int(version_value) != WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION
+	):
+		issues.append(_config_issue(
+			"unsupported_region_layout_schema_version",
+			"schema_version",
+			"",
+			"pve_four_region_v1 只支持 schema version 2"
+		))
+
+
+static func _validate_raw_legacy_conflicts(
+	raw_config: Dictionary,
+	issues: Array[Dictionary]
+) -> void:
+	if raw_config.has("map_layers"):
+		issues.append(_config_issue(
+			"conflicting_legacy_region_field",
+			"map_layers",
+			"",
+			"四区域模式不得声明 legacy map_layers"
+		))
+	if raw_config.has("boss_generation"):
+		issues.append(_config_issue(
+			"conflicting_legacy_region_field",
+			"boss_generation",
+			WdcMapGenerationTypes.REGION_ROLE_BOSS,
+			"四区域模式不得声明 legacy boss_generation"
+		))
+	var map_value: Variant = raw_config.get("map", null)
+	if not (map_value is Dictionary):
+		return
+	var map_dict: Dictionary = map_value as Dictionary
+	var player_spawn_value: Variant = map_dict.get("player_spawn", null)
+	if player_spawn_value is Dictionary and (player_spawn_value as Dictionary).has("layer_id"):
+		issues.append(_config_issue(
+			"conflicting_legacy_region_field",
+			"map.player_spawn.layer_id",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"四区域模式不得声明出生 layer_id"
+		))
+	var extraction_sites_value: Variant = map_dict.get("extraction_sites", null)
+	if extraction_sites_value is Dictionary and (extraction_sites_value as Dictionary).has("layer_distribution"):
+		issues.append(_config_issue(
+			"conflicting_legacy_region_field",
+			"map.extraction_sites.layer_distribution",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"四区域模式不得声明撤离 layer_distribution"
+		))
+
+
+static func _normalize_four_region_layout(
+	raw_config: Dictionary,
+	raw_region_layout: Dictionary,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var allowed_layout_keys: Array[String] = [
+		"mode",
+		WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_1,
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_2,
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+	]
+	_append_unknown_field_issues(
+		raw_region_layout,
+		allowed_layout_keys,
+		"region_layout",
+		"",
+		issues
+	)
+	var normalized: Dictionary = {
+		"mode": WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1,
+	}
+	var seen_region_ids: Dictionary = {}
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		if not raw_region_layout.has(role):
+			issues.append(_config_issue(
+				"missing_region_role",
+				"region_layout.%s" % role,
+				role,
+				"四区域声明缺少固定角色 %s" % role
+			))
+			continue
+		var role_value: Variant = raw_region_layout.get(role)
+		if not (role_value is Dictionary):
+			issues.append(_config_issue(
+				"invalid_region_layout_declaration",
+				"region_layout.%s" % role,
+				role,
+				"区域槽位必须是对象"
+			))
+			continue
+		var normalized_slot: Dictionary = _normalize_region_slot(
+			role,
+			role_value as Dictionary,
+			issues
+		)
+		if normalized_slot.is_empty():
+			continue
+		var region_id: String = str(normalized_slot.get("id", ""))
+		if not region_id.is_empty():
+			if seen_region_ids.has(region_id):
+				issues.append(_config_issue(
+					"duplicate_region_id",
+					"region_layout.%s.id" % role,
+					role,
+					"区域 id 与 %s 重复" % str(seen_region_ids[region_id])
+				))
+			else:
+				seen_region_ids[region_id] = role
+		normalized[role] = normalized_slot
+	_validate_core_poi_references(raw_config, normalized, issues)
+	return normalized
+
+
+static func _normalize_region_slot(
+	role: String,
+	raw_slot: Dictionary,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var allowed_keys: Array[String] = ["id", "display_name", "content_profile_id"]
+	if role != WdcMapGenerationTypes.REGION_ROLE_REGULAR:
+		allowed_keys.append("layout_profile_id")
+		allowed_keys.append("core_poi")
+	if role == WdcMapGenerationTypes.REGION_ROLE_BOSS:
+		allowed_keys.append("encounter_profile_id")
+	_append_unknown_field_issues(
+		raw_slot,
+		allowed_keys,
+		"region_layout.%s" % role,
+		role,
+		issues
+	)
+	var region_id_value: Variant = _strict_config_string(raw_slot.get("id", null))
+	var region_id: String = region_id_value as String if region_id_value is String else ""
+	if region_id_value == null:
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"region_layout.%s.id" % role,
+			role,
+			"区域 id 必须是字符串"
+		))
+	elif region_id.is_empty():
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"region_layout.%s.id" % role,
+			role,
+			"区域 id 不能为空"
+		))
+	var display_name_value: Variant = _strict_config_string(
+		raw_slot.get("display_name", null)
+	)
+	var display_name: String = (
+		display_name_value as String if display_name_value is String else ""
+	)
+	if not raw_slot.has("display_name"):
+		issues.append(_config_issue(
+			"missing_region_display_name",
+			"region_layout.%s.display_name" % role,
+			role,
+			"区域展示名不能为空"
+		))
+	elif display_name_value == null:
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"region_layout.%s.display_name" % role,
+			role,
+			"区域展示名必须是字符串"
+		))
+	elif display_name.is_empty():
+		issues.append(_config_issue(
+			"missing_region_display_name",
+			"region_layout.%s.display_name" % role,
+			role,
+			"区域展示名不能为空"
+		))
+	var content_profile_value: Variant = _strict_config_string(
+		raw_slot.get("content_profile_id", null)
+	)
+	var content_profile_id: String = (
+		content_profile_value as String if content_profile_value is String else ""
+	)
+	if not raw_slot.has("content_profile_id"):
+		issues.append(_config_issue(
+			"missing_content_profile_reference",
+			"region_layout.%s.content_profile_id" % role,
+			role,
+			"区域 content profile 引用不能为空"
+		))
+	elif content_profile_value == null:
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"region_layout.%s.content_profile_id" % role,
+			role,
+			"区域 content profile 引用必须是字符串"
+		))
+	elif content_profile_id.is_empty():
+		issues.append(_config_issue(
+			"missing_content_profile_reference",
+			"region_layout.%s.content_profile_id" % role,
+			role,
+			"区域 content profile 引用不能为空"
+		))
+	var normalized: Dictionary = {
+		"id": region_id,
+		"display_name": display_name,
+		"content_profile_id": content_profile_id,
+		"role": role,
+		"difficulty_rank": WdcMapGenerationTypes.get_region_difficulty_rank(role),
+	}
+	if role == WdcMapGenerationTypes.REGION_ROLE_REGULAR:
+		return normalized
+	var layout_profile_value: Variant = _strict_config_string(
+		raw_slot.get("layout_profile_id", null)
+	)
+	var layout_profile_id: String = (
+		layout_profile_value as String if layout_profile_value is String else ""
+	)
+	if not raw_slot.has("layout_profile_id"):
+		issues.append(_config_issue(
+			"missing_layout_profile_reference",
+			"region_layout.%s.layout_profile_id" % role,
+			role,
+			"高风险区域 layout profile 引用不能为空"
+		))
+	elif layout_profile_value == null:
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"region_layout.%s.layout_profile_id" % role,
+			role,
+			"高风险区域 layout profile 引用必须是字符串"
+		))
+	elif layout_profile_id.is_empty():
+		issues.append(_config_issue(
+			"missing_layout_profile_reference",
+			"region_layout.%s.layout_profile_id" % role,
+			role,
+			"高风险区域 layout profile 引用不能为空"
+		))
+	normalized["layout_profile_id"] = layout_profile_id
+	var core_poi_value: Variant = raw_slot.get("core_poi", null)
+	if not (core_poi_value is Dictionary):
+		issues.append(_config_issue(
+			"missing_core_poi_reference",
+			"region_layout.%s.core_poi" % role,
+			role,
+			"高风险区域必须声明核心 POI"
+		))
+	else:
+		var raw_core_poi: Dictionary = core_poi_value as Dictionary
+		_append_unknown_field_issues(
+			raw_core_poi,
+			["template_id", "max_center_offset_cells"],
+			"region_layout.%s.core_poi" % role,
+			role,
+			issues
+		)
+		var template_id_value: Variant = _strict_config_string(
+			raw_core_poi.get("template_id", null)
+		)
+		var template_id: String = (
+			template_id_value as String if template_id_value is String else ""
+		)
+		if not raw_core_poi.has("template_id"):
+			issues.append(_config_issue(
+				"missing_core_poi_reference",
+				"region_layout.%s.core_poi.template_id" % role,
+				role,
+				"核心 POI 模板引用不能为空"
+			))
+		elif template_id_value == null:
+			issues.append(_config_issue(
+				"invalid_region_layout_declaration",
+				"region_layout.%s.core_poi.template_id" % role,
+				role,
+				"核心 POI 模板引用必须是字符串"
+			))
+		elif template_id.is_empty():
+			issues.append(_config_issue(
+				"missing_core_poi_reference",
+				"region_layout.%s.core_poi.template_id" % role,
+				role,
+				"核心 POI 模板引用不能为空"
+			))
+		var offset_value: Variant = raw_core_poi.get("max_center_offset_cells", null)
+		var offset_is_number: bool = (
+			typeof(offset_value) == TYPE_INT or typeof(offset_value) == TYPE_FLOAT
+		)
+		if (
+			not offset_is_number
+			or float(offset_value) != floor(float(offset_value))
+			or int(offset_value) < 0
+		):
+			issues.append(_config_issue(
+				"invalid_region_layout_declaration",
+				"region_layout.%s.core_poi.max_center_offset_cells" % role,
+				role,
+				"核心 POI 中心偏移必须是非负整数"
+			))
+		normalized["core_poi"] = {
+			"template_id": template_id,
+			"max_center_offset_cells": maxi(int(offset_value), 0) if offset_is_number else 0,
+		}
+	if role == WdcMapGenerationTypes.REGION_ROLE_BOSS:
+		var encounter_profile_value: Variant = _strict_config_string(
+			raw_slot.get("encounter_profile_id", null)
+		)
+		var encounter_profile_id: String = (
+			encounter_profile_value as String if encounter_profile_value is String else ""
+		)
+		if not raw_slot.has("encounter_profile_id"):
+			issues.append(_config_issue(
+				"missing_boss_encounter_reference",
+				"region_layout.boss.encounter_profile_id",
+				role,
+				"BOSS 区域 encounter profile 引用不能为空"
+			))
+		elif encounter_profile_value == null:
+			issues.append(_config_issue(
+				"invalid_region_layout_declaration",
+				"region_layout.boss.encounter_profile_id",
+				role,
+				"BOSS encounter profile 引用必须是字符串"
+			))
+		elif encounter_profile_id.is_empty():
+			issues.append(_config_issue(
+				"missing_boss_encounter_reference",
+				"region_layout.boss.encounter_profile_id",
+				role,
+				"BOSS 区域 encounter profile 引用不能为空"
+			))
+		normalized["encounter_profile_id"] = encounter_profile_id
+	return normalized
+
+
+static func _append_unknown_field_issues(
+	source: Dictionary,
+	allowed_keys: Array[String],
+	base_path: String,
+	role: String,
+	issues: Array[Dictionary]
+) -> void:
+	for key_value: Variant in source.keys():
+		var key: String = str(key_value)
+		if allowed_keys.has(key):
+			continue
+		issues.append(_config_issue(
+			"invalid_region_layout_declaration",
+			"%s.%s" % [base_path, key],
+			role,
+			"区域声明包含不属于该角色的字段"
+		))
+
+
+static func _validate_core_poi_references(
+	raw_config: Dictionary,
+	normalized_region_layout: Dictionary,
+	issues: Array[Dictionary]
+) -> void:
+	var template_id_counts: Dictionary = {}
+	var poi_generation_value: Variant = raw_config.get("poi_generation", null)
+	if poi_generation_value is Dictionary:
+		var poi_types_value: Variant = (poi_generation_value as Dictionary).get("poi_types", null)
+		if poi_types_value is Array:
+			for poi_index: int in range((poi_types_value as Array).size()):
+				var poi_value: Variant = (poi_types_value as Array)[poi_index]
+				if not (poi_value is Dictionary):
+					continue
+				var poi_id_value: Variant = (poi_value as Dictionary).get("id", null)
+				if typeof(poi_id_value) != TYPE_STRING:
+					issues.append(_config_issue(
+						"invalid_region_layout_declaration",
+						"poi_generation.poi_types[%d].id" % poi_index,
+						"",
+						"四区域配置引用的 POI 模板 id 必须是字符串"
+					))
+					continue
+				var poi_id: String = (poi_id_value as String).strip_edges()
+				if poi_id.is_empty():
+					continue
+				template_id_counts[poi_id] = int(template_id_counts.get(poi_id, 0)) + 1
+	for role: String in [
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_1,
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_2,
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+	]:
+		var slot_value: Variant = normalized_region_layout.get(role, null)
+		if not (slot_value is Dictionary):
+			continue
+		var core_poi_value: Variant = (slot_value as Dictionary).get("core_poi", null)
+		if not (core_poi_value is Dictionary):
+			continue
+		var template_id: String = str((core_poi_value as Dictionary).get("template_id", ""))
+		if template_id.is_empty():
+			continue
+		var match_count: int = int(template_id_counts.get(template_id, 0))
+		if match_count == 0:
+			issues.append(_config_issue(
+				"unknown_core_poi_reference",
+				"region_layout.%s.core_poi.template_id" % role,
+				role,
+				"核心 POI 模板引用不存在：%s" % template_id
+			))
+		elif match_count > 1:
+			issues.append(_config_issue(
+				"ambiguous_core_poi_reference",
+				"region_layout.%s.core_poi.template_id" % role,
+				role,
+				"核心 POI 模板引用匹配到多个同 id 模板：%s" % template_id
+			))
+
+
+static func _build_normalized_document(
+	config: WdcMapGenerationTypes.MapConfig,
+	source_document: Dictionary
+) -> Dictionary:
+	var normalized: Dictionary = source_document.duplicate(true)
+	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+		normalized["schema_version"] = WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION
+		normalized["region_layout"] = _serialize_region_layout(config.region_layout)
+		normalized.erase("map_layers")
+		normalized.erase("boss_generation")
+		var pve_map: Dictionary = (
+			(normalized.get("map", {}) as Dictionary).duplicate(true)
+			if normalized.get("map", {}) is Dictionary
+			else {}
+		)
+		var player_spawn: Dictionary = (
+			(pve_map.get("player_spawn", {}) as Dictionary).duplicate(true)
+			if pve_map.get("player_spawn", {}) is Dictionary
+			else {}
+		)
+		player_spawn.erase("layer_id")
+		if not player_spawn.is_empty() or pve_map.has("player_spawn"):
+			pve_map["player_spawn"] = player_spawn
+		var extraction_sites: Dictionary = (
+			(pve_map.get("extraction_sites", {}) as Dictionary).duplicate(true)
+			if pve_map.get("extraction_sites", {}) is Dictionary
+			else {}
+		)
+		extraction_sites.erase("layer_distribution")
+		if not extraction_sites.is_empty() or pve_map.has("extraction_sites"):
+			pve_map["extraction_sites"] = extraction_sites
+		normalized["map"] = pve_map
+		return normalized
+	normalized.erase("region_layout")
+	normalized["map_layers"] = config.map_layers.duplicate(true)
+	var legacy_map: Dictionary = (
+		(normalized.get("map", {}) as Dictionary).duplicate(true)
+		if normalized.get("map", {}) is Dictionary
+		else {}
+	)
+	var legacy_player_spawn: Dictionary = (
+		(legacy_map.get("player_spawn", {}) as Dictionary).duplicate(true)
+		if legacy_map.get("player_spawn", {}) is Dictionary
+		else {}
+	)
+	legacy_player_spawn["count"] = config.player_spawn_count
+	legacy_player_spawn["layer_id"] = config.player_spawn_layer_id
+	legacy_map["player_spawn"] = legacy_player_spawn
+	var legacy_extraction_sites: Dictionary = (
+		(legacy_map.get("extraction_sites", {}) as Dictionary).duplicate(true)
+		if legacy_map.get("extraction_sites", {}) is Dictionary
+		else {}
+	)
+	legacy_extraction_sites["count"] = config.extraction_site_count
+	legacy_extraction_sites["layer_distribution"] = (
+		config.extraction_site_layer_distribution.duplicate(true)
+	)
+	legacy_map["extraction_sites"] = legacy_extraction_sites
+	normalized["map"] = legacy_map
+	return normalized
+
+
+static func _serialize_region_layout(region_layout: Dictionary) -> Dictionary:
+	var serialized: Dictionary = {
+		"mode": WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1,
+	}
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var slot_value: Variant = region_layout.get(role, null)
+		if not (slot_value is Dictionary):
+			continue
+		var slot: Dictionary = slot_value as Dictionary
+		var encoded_slot: Dictionary = {
+			"id": str(slot.get("id", "")),
+			"display_name": str(slot.get("display_name", "")),
+			"content_profile_id": str(slot.get("content_profile_id", "")),
+		}
+		if role != WdcMapGenerationTypes.REGION_ROLE_REGULAR:
+			encoded_slot["layout_profile_id"] = str(slot.get("layout_profile_id", ""))
+			encoded_slot["core_poi"] = (
+				(slot.get("core_poi", {}) as Dictionary).duplicate(true)
+				if slot.get("core_poi", {}) is Dictionary
+				else {}
+			)
+		if role == WdcMapGenerationTypes.REGION_ROLE_BOSS:
+			encoded_slot["encounter_profile_id"] = str(
+				slot.get("encounter_profile_id", "")
+			)
+		serialized[role] = encoded_slot
+	return serialized
+
+
+static func _config_issue(
+	code: String,
+	path: String,
+	role: String,
+	message: String
+) -> Dictionary:
+	return WdcMapGenerationTypes.make_generation_issue(code, path, role, message)
+
+
+static func _strict_config_string(value: Variant) -> Variant:
+	if typeof(value) != TYPE_STRING:
+		return null
+	return (value as String).strip_edges()
 
 
 static func _resolve_display_name(filename: String, config_dict: Dictionary) -> String:

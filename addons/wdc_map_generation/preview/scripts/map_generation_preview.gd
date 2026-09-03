@@ -641,6 +641,13 @@ func _on_config_selected(index: int) -> void:
 func _on_save_current_config_pressed() -> void:
 	if not _sync_current_config_from_editor():
 		return
+	var parse_result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = (
+		CONFIG_CATALOG.parse_and_normalize_config(_current_config_dict)
+	)
+	if not parse_result.is_success():
+		_set_status("保存失败：%s" % _format_first_issue(parse_result.get_issues()))
+		return
+	_current_config_dict = CONFIG_CATALOG.serialize_normalized_config(parse_result)
 	var filename: String = CONFIG_CATALOG.normalize_config_filename_input(_filename_input.text)
 	if filename.is_empty():
 		_set_status("保存失败：配置文件名为空")
@@ -679,17 +686,28 @@ func _on_rebuild_random_seed_pressed() -> void:
 
 
 func _rebuild_preview(randomize_seed: bool) -> void:
+	var previous_preview_seed: int = _preview_seed
+	_clear_preview_result()
 	if not _sync_current_config_from_editor():
 		return
 	if _current_config_dict.is_empty():
 		_set_status("预览失败：缺少配置")
 		return
-	var map_config: WdcMapGenerationTypes.MapConfig = MAP_TYPES.MapConfig.new()
-	CONFIG_CATALOG.apply_config_dict_to_legacy_map_config(map_config, _current_config_dict)
-	map_config.seed = _resolve_preview_seed(_current_config_dict, randomize_seed)
+	var parse_result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = (
+		CONFIG_CATALOG.parse_and_normalize_config(_current_config_dict)
+	)
+	if not parse_result.is_success():
+		_set_status("预览失败：%s" % _format_first_issue(parse_result.get_issues()))
+		return
+	var map_config: WdcMapGenerationTypes.MapConfig = parse_result.config
+	map_config.seed = _resolve_preview_seed(
+		_current_config_dict,
+		randomize_seed,
+		previous_preview_seed
+	)
 	var map_data: WdcMapGenerationTypes.MapData = _generator.generate_full(map_config)
 	if map_data == null:
-		_set_status("预览失败：地图生成器未返回结果")
+		_set_status("预览失败：%s" % _format_first_issue(_generator.get_last_generation_issues()))
 		return
 	_current_map_data = map_data
 	_preview_seed = _generator.last_resolved_seed
@@ -712,6 +730,31 @@ func _rebuild_preview(randomize_seed: bool) -> void:
 			int(site_summary.get("fallback_count", 0)),
 		]
 	)
+
+
+func _clear_preview_result() -> void:
+	_current_map_data = null
+	_preview_seed = 0
+	_preview_zoom = 1.0
+	_preview_pan = Vector2.ZERO
+	_preview_dragging = false
+	if _texture_rect != null:
+		_texture_rect.texture = null
+		_texture_rect.position = Vector2.ZERO
+		_texture_rect.size = Vector2.ZERO
+	if _seed_label != null:
+		_seed_label.text = "种子：-"
+	_hide_hover_cell()
+
+
+func _format_first_issue(issues: Array[Dictionary]) -> String:
+	if issues.is_empty():
+		return "未知错误"
+	var issue: Dictionary = issues[0]
+	var code: String = str(issue.get("code", "unknown_error"))
+	var path: String = str(issue.get("path", ""))
+	var message: String = str(issue.get("message", ""))
+	return "%s%s：%s" % [code, " @ %s" % path if not path.is_empty() else "", message]
 
 
 func _fit_preview_to_viewport() -> void:
@@ -904,11 +947,15 @@ func _resolve_cell_display_name(cell: WdcMapGenerationTypes.CellData) -> String:
 	return "普通石头"
 
 
-func _resolve_preview_seed(config_dict: Dictionary, randomize_seed: bool) -> int:
+func _resolve_preview_seed(
+	config_dict: Dictionary,
+	randomize_seed: bool,
+	previous_preview_seed: int = 0
+) -> int:
 	if randomize_seed:
 		return _random_seed()
-	if _preview_seed > 0:
-		return _preview_seed
+	if previous_preview_seed > 0:
+		return previous_preview_seed
 	if CONFIG_CATALOG.extract_seed_mode(config_dict) == "fixed":
 		return maxi(CONFIG_CATALOG.extract_fixed_seed(config_dict), 1)
 	return _random_seed()
