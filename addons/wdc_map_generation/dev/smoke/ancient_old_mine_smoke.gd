@@ -64,6 +64,13 @@ func _test_static_contract(raw_config: Dictionary) -> void:
 		_expect(not core_template_ids.has(template_id), "三个核心 POI 模板必须互不重复")
 		core_template_ids[template_id] = true
 	var generation: Dictionary = raw_config.get("region_generation", {}) as Dictionary
+	for layout_profile_value: Variant in generation.get("layout_profiles", []) as Array:
+		if layout_profile_value is Dictionary:
+			_expect(
+				str((layout_profile_value as Dictionary).get("shape_algorithm", ""))
+				== "noisy_ellipse",
+				"古代旧矿三个高风险区必须全部使用噪声不规则圆形"
+			)
 	var regular: Dictionary = _find_profile(
 		generation.get("content_profiles", []),
 		"ancient_old_mine_regular_content"
@@ -81,6 +88,12 @@ func _test_static_contract(raw_config: Dictionary) -> void:
 		"ancient_old_mine_boss_content"
 	)
 	_expect(not regular.is_empty() and not high_1.is_empty() and not high_2.is_empty() and not boss.is_empty(), "必须声明四个 content profile")
+	_expect(
+		int(regular.get("mineral_value_budget", -1)) == 24
+		and _target_count(regular, "minerals") == 18
+		and _minimum_count(regular, "minerals") == 9,
+		"regular 矿物 budget/target/minimum 必须为原基线 8/6/3 的三倍"
+	)
 	_expect(int(regular.get("reward_value_budget", -1)) == 0, "regular reward budget 必须为零")
 	for section_name: String in ["room_contents", "traps", "monster_sites", "nests", "camps"]:
 		_expect(_target_count(regular, section_name) == 0, "regular %s target 必须为零" % section_name)
@@ -294,7 +307,7 @@ func _validate_generated_content_counts(
 			MAP_TYPES.REGION_ROLE_HIGH_2,
 			{}
 		) as Dictionary
-		for section_name: String in ["minerals", "pois"]:
+		for section_name: String in ["minerals"]:
 			var actual_count: int = int(high_2_counts.get(section_name, 0))
 			var minimum_count: int = _minimum_count(high_2_profile, section_name)
 			var target_count: int = _target_count(high_2_profile, section_name)

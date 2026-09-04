@@ -4,6 +4,7 @@ const CONFIG_CATALOG = preload("../../config/data_generated_map_config_catalog.g
 const MAP_TYPES = preload("../../core/generated_map_types.gd")
 const GENERATOR_SCRIPT = preload("../../core/generated_map_generator.gd")
 const TILE_RULES = preload("../../core/generated_map_tile_rules.gd")
+const REGION_ROCK_STYLES = preload("../../core/generated_map_region_rock_style_catalog.gd")
 const WdcMapGenerationTypes = MAP_TYPES
 const WdcMapGenerationGenerator = GENERATOR_SCRIPT
 
@@ -28,10 +29,6 @@ const COLOR_NEST_SITE: Color = Color(0.92, 0.24, 0.24, 1.0)
 const COLOR_CAMP_GUARD_SITE: Color = Color(0.38, 1.0, 0.58, 1.0)
 const COLOR_CAMP_CHEST_SITE: Color = Color(1.0, 0.72, 0.16, 1.0)
 const COLOR_TRAP: Color = Color(0.95, 0.35, 0.20, 1.0)
-const COLOR_REGION_REGULAR: Color = Color(0.32, 0.52, 0.42, 1.0)
-const COLOR_REGION_HIGH_1: Color = Color(0.82, 0.66, 0.20, 1.0)
-const COLOR_REGION_HIGH_2: Color = Color(0.92, 0.36, 0.18, 1.0)
-const COLOR_REGION_BOSS: Color = Color(0.72, 0.18, 0.78, 1.0)
 const COLOR_REGION_CENTER: Color = Color(0.98, 0.98, 0.98, 1.0)
 const COLOR_CORE_POI: Color = Color(1.0, 0.26, 0.72, 1.0)
 const PREVIEW_MIN_ZOOM: float = 0.25
@@ -967,18 +964,6 @@ func _resolve_cell_display_name(cell: WdcMapGenerationTypes.CellData) -> String:
 	return "普通石头"
 
 
-func _region_overlay_color(role: String) -> Color:
-	match role:
-		WdcMapGenerationTypes.REGION_ROLE_HIGH_1:
-			return COLOR_REGION_HIGH_1
-		WdcMapGenerationTypes.REGION_ROLE_HIGH_2:
-			return COLOR_REGION_HIGH_2
-		WdcMapGenerationTypes.REGION_ROLE_BOSS:
-			return COLOR_REGION_BOSS
-		_:
-			return COLOR_REGION_REGULAR
-
-
 func _cell_from_poi_instance(instance: Dictionary) -> Vector2i:
 	var center_value: Variant = instance.get("center_cell", null)
 	if center_value is Vector2i:
@@ -1023,13 +1008,11 @@ func _build_map_preview_image(map_data: WdcMapGenerationTypes.MapData) -> Image:
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
 			var cell_coord: Vector2i = Vector2i(x, y)
-			var cell_color: Color = _resolve_map_cell_color(map_data.get_cell(x, y))
-			if map_data.region_plan is WdcMapGenerationTypes.RegionPlan:
-				var region = (map_data.region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(
-					cell_coord
-				)
-				if region != null:
-					cell_color = cell_color.lerp(_region_overlay_color(region.role), 0.22)
+			var rock_style_id: String = _resolve_region_rock_style_id(map_data, cell_coord)
+			var cell_color: Color = _resolve_map_cell_color(
+				map_data.get_cell(x, y),
+				rock_style_id
+			)
 			image.set_pixel(x, map_data.height - 1 - y, cell_color)
 	for poi_center_value: Variant in map_data.poi_centers:
 		if poi_center_value is Dictionary:
@@ -1225,11 +1208,16 @@ func _resolve_cell_site_hover_info(cell: Vector2i) -> String:
 	if _current_map_data.region_plan is WdcMapGenerationTypes.RegionPlan:
 		var region = (_current_map_data.region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
 		if region != null:
+			var rock_style_id: String = REGION_ROCK_STYLES.resolve_style_id(
+				region.id,
+				region.role
+			)
 			parts.append(
-				"区域（role=%s，id=%s，rank=%d）" % [
+				"区域（role=%s，id=%s，rank=%d，岩石=%s）" % [
 					region.role,
 					region.id,
 					region.difficulty_rank,
+					REGION_ROCK_STYLES.get_display_name(rock_style_id),
 				]
 			)
 	for poi_instance: Dictionary in _current_map_data.poi_instances:
@@ -1329,9 +1317,12 @@ func _append_hover_field(fields: Array[String], label: String, value: String) ->
 	fields.append("%s=%s" % [label, value])
 
 
-func _resolve_map_cell_color(cell: WdcMapGenerationTypes.CellData) -> Color:
+func _resolve_map_cell_color(
+	cell: WdcMapGenerationTypes.CellData,
+	rock_style_id: String = REGION_ROCK_STYLES.DEFAULT_STYLE_ID
+) -> Color:
 	if cell == null:
-		return COLOR_WALL
+		return REGION_ROCK_STYLES.get_wall_color(rock_style_id)
 	if cell.poi_type == WdcMapGenerationTypes.PoiType.NONE and cell.trace_type != WdcMapGenerationTypes.PoiType.NONE:
 		return _resolve_trace_color(cell.trace_type)
 	if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
@@ -1347,7 +1338,10 @@ func _resolve_map_cell_color(cell: WdcMapGenerationTypes.CellData) -> Color:
 			WdcMapGenerationTypes.SpecialBlockType.POI_WALL:
 				return COLOR_POI_WALL
 	if cell.has_mineral:
-		return _apply_durability_shade(COLOR_MINERAL_WALL, cell)
+		return _apply_durability_shade(
+			REGION_ROCK_STYLES.get_wall_color(rock_style_id, true),
+			cell
+		)
 	if cell.cell_type == WdcMapGenerationTypes.CellType.FLOOR:
 		match cell.poi_type:
 			WdcMapGenerationTypes.PoiType.LARGE_RUIN:
@@ -1364,7 +1358,22 @@ func _resolve_map_cell_color(cell: WdcMapGenerationTypes.CellData) -> Color:
 			return COLOR_TRACE_MEDIUM
 		WdcMapGenerationTypes.PoiType.SMALL_ORE:
 			return COLOR_TRACE_SMALL
-	return _apply_durability_shade(COLOR_WALL, cell)
+	return _apply_durability_shade(
+		REGION_ROCK_STYLES.get_wall_color(rock_style_id),
+		cell
+	)
+
+
+func _resolve_region_rock_style_id(
+	map_data: WdcMapGenerationTypes.MapData,
+	cell: Vector2i
+) -> String:
+	if map_data == null or not (map_data.region_plan is WdcMapGenerationTypes.RegionPlan):
+		return REGION_ROCK_STYLES.DEFAULT_STYLE_ID
+	var region = (map_data.region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
+	if region == null:
+		return REGION_ROCK_STYLES.DEFAULT_STYLE_ID
+	return REGION_ROCK_STYLES.resolve_style_id(region.id, region.role)
 
 
 func _load_current_config_into_editor() -> void:

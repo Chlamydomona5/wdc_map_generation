@@ -3,6 +3,10 @@ extends RefCounted
 
 const WdcMapGenerationTypes = preload("generated_map_types.gd")
 const WdcFourRegionLayoutValidator = preload("four_region_layout_validator.gd")
+const NOISY_ELLIPSE_BOUNDARY_AMPLITUDE: float = 0.16
+const NOISY_ELLIPSE_BOUNDARY_SCALE: float = 1.85
+const NOISY_ELLIPSE_BOUNDARY_OCTAVES: int = 3
+const NOISY_ELLIPSE_BOUNDARY_PERSISTENCE: float = 0.55
 
 
 class RegionLayoutDraftResult:
@@ -221,11 +225,16 @@ func _build_mask_cells(
 			if normalized_shape in ["ellipse", "noisy_ellipse"]:
 				var normalized_x: float = (float(x) + 0.5 - center.x) / radius_x
 				var normalized_y: float = (float(y) + 0.5 - center.y) / radius_y
+				var normalized_radius: float = sqrt(
+					normalized_x * normalized_x + normalized_y * normalized_y
+				)
 				var limit: float = 1.0
 				if normalized_shape == "noisy_ellipse":
-					var hash_value: int = _mix_u31(x * 73856093 ^ y * 19349663 ^ int(rng.seed))
-					limit += (float(hash_value % 1000) / 1000.0 - 0.5) * 0.10
-				include = normalized_x * normalized_x + normalized_y * normalized_y <= limit
+					var angle: float = atan2(normalized_y, normalized_x)
+					limit += _sample_noisy_ellipse_boundary(angle, int(rng.seed)) * (
+						NOISY_ELLIPSE_BOUNDARY_AMPLITUDE
+					)
+				include = normalized_radius <= limit
 			elif normalized_shape == "rounded_rectangle":
 				var corner_radius: float = maxf(minf(radius_x, radius_y) * 0.35, 1.0)
 				var inner_x: float = radius_x - corner_radius
@@ -236,6 +245,55 @@ func _build_mask_cells(
 			if include:
 				result.append(Vector2i(x, y))
 	return result
+
+
+## 方法职责：沿椭圆极角采样连续、首尾闭合的多频噪声，形成不规则但无孔洞的圆形边界。
+## 边界约束：噪声只改变径向阈值，不改变中心和单值 membership，因此区域保持星形连通。
+func _sample_noisy_ellipse_boundary(angle: float, seed: int) -> float:
+	var direction: Vector2 = Vector2(cos(angle), sin(angle))
+	var offset_x: float = float(_mix_u31(seed ^ 0x2f6e2b1) % 4096) / 257.0
+	var offset_y: float = float(_mix_u31(seed ^ 0x5bd1e995) % 4096) / 263.0
+	var total: float = 0.0
+	var amplitude: float = 1.0
+	var amplitude_sum: float = 0.0
+	var frequency: float = 1.0
+	for octave: int in range(NOISY_ELLIPSE_BOUNDARY_OCTAVES):
+		var sample_position: Vector2 = direction * NOISY_ELLIPSE_BOUNDARY_SCALE * frequency
+		total += _sample_value_noise_2d(
+			sample_position.x + offset_x,
+			sample_position.y + offset_y,
+			seed + octave * 1013
+		) * amplitude
+		amplitude_sum += amplitude
+		frequency *= 2.0
+		amplitude *= NOISY_ELLIPSE_BOUNDARY_PERSISTENCE
+	return total / amplitude_sum if amplitude_sum > 0.0 else 0.0
+
+
+func _sample_value_noise_2d(sample_x: float, sample_y: float, seed: int) -> float:
+	var x0: int = int(floor(sample_x))
+	var y0: int = int(floor(sample_y))
+	var x1: int = x0 + 1
+	var y1: int = y0 + 1
+	var tx: float = _smooth_noise_step(sample_x - float(x0))
+	var ty: float = _smooth_noise_step(sample_y - float(y0))
+	var top: float = lerpf(_hash_noise_2d(x0, y0, seed), _hash_noise_2d(x1, y0, seed), tx)
+	var bottom: float = lerpf(_hash_noise_2d(x0, y1, seed), _hash_noise_2d(x1, y1, seed), tx)
+	return lerpf(top, bottom, ty)
+
+
+func _smooth_noise_step(value: float) -> float:
+	var clamped_value: float = clampf(value, 0.0, 1.0)
+	return clamped_value * clamped_value * (3.0 - 2.0 * clamped_value)
+
+
+func _hash_noise_2d(x: int, y: int, seed: int) -> float:
+	var seed_value: int = abs(seed) % 104729
+	var raw_value: float = sin(
+		float(x) * 127.1 + float(y) * 311.7 + float(seed_value) * 74.7
+	) * 43758.5453123
+	var unit_value: float = raw_value - floor(raw_value)
+	return unit_value * 2.0 - 1.0
 
 
 func _sample_region_size(

@@ -1000,7 +1000,7 @@
     "layout_profiles": [
       {
         "id": "ancient_old_mine_high_1_layout",
-        "shape_algorithm": "rounded_rectangle",
+        "shape_algorithm": "noisy_ellipse",
         "min_size_cells": {
           "x": 42,
           "y": 42
@@ -1034,7 +1034,7 @@
       },
       {
         "id": "ancient_old_mine_boss_layout",
-        "shape_algorithm": "rectangle",
+        "shape_algorithm": "noisy_ellipse",
         "min_size_cells": {
           "x": 32,
           "y": 32
@@ -1058,12 +1058,12 @@
           "mineral_max_hit_points": 2,
           "poi_max_hit_points": 2
         },
-        "mineral_value_budget": 8,
+        "mineral_value_budget": 24,
         "reward_value_budget": 0,
         "minerals": {
           "count_unit": "site",
-          "target_count": 6,
-          "minimum_count": 3,
+          "target_count": 18,
+          "minimum_count": 9,
           "entries": [
             {
               "cluster_type_id": "common_mineral",

@@ -3,6 +3,7 @@ extends SceneTree
 const CONFIG_CATALOG = preload("../../config/data_generated_map_config_catalog.gd")
 const MAP_TYPES = preload("../../core/generated_map_types.gd")
 const GENERATOR_SCRIPT = preload("../../core/generated_map_generator.gd")
+const REGION_ROCK_STYLES = preload("../../core/generated_map_region_rock_style_catalog.gd")
 const PREVIEW_SCENE = preload("../../preview/scenes/map_generation_preview.tscn")
 const WdcMapGenerationTypes = MAP_TYPES
 const WdcMapGenerationGenerator = GENERATOR_SCRIPT
@@ -168,6 +169,9 @@ func _test_four_region_preview(preview_node: Node) -> bool:
 		"role=%s" % core_region.role,
 		"id=%s" % core_region.id,
 		"rank=%d" % core_region.difficulty_rank,
+		"岩石=%s" % REGION_ROCK_STYLES.get_display_name(
+			REGION_ROCK_STYLES.resolve_style_id(core_region.id, core_region.role)
+		),
 		"instance=%s" % str(core_instance.get("instance_id", "")),
 	]:
 		if not hover_text.contains(required_text):
@@ -175,22 +179,30 @@ func _test_four_region_preview(preview_node: Node) -> bool:
 
 	var image_value: Variant = preview_node.call("_build_map_preview_image", map_data)
 	if not (image_value is Image):
-		return _fail("四区域预览 overlay 图像不可用")
+		return _fail("四区域预览岩石图像不可用")
 	var image: Image = image_value as Image
-	var probe_cell: Vector2i = Vector2i.ZERO
-	var probe_region = map_data.region_plan.try_get_at(probe_cell)
-	var base_color: Color = preview_node.call(
-		"_resolve_map_cell_color",
-		map_data.get_cell(probe_cell.x, probe_cell.y)
-	)
-	var overlay_color: Color = preview_node.call("_region_overlay_color", probe_region.role)
-	var expected_color: Color = base_color.lerp(overlay_color, 0.22)
-	var actual_color: Color = image.get_pixel(
-		probe_cell.x,
-		map_data.height - 1 - probe_cell.y
-	)
-	if not _colors_close(actual_color, expected_color):
-		return _fail("四区域预览图像没有消费 RegionPlan overlay")
+	var observed_style_ids: Dictionary = {}
+	for role: String in MAP_TYPES.REGION_ROLE_ORDER:
+		var region = map_data.region_plan.try_get_by_role(role)
+		var style_id: String = REGION_ROCK_STYLES.resolve_style_id(region.id, region.role)
+		observed_style_ids[style_id] = true
+		var probe_cell: Vector2i = _find_plain_wall_cell_for_role(map_data, role)
+		if probe_cell.x < 0:
+			return _fail("四区域预览缺少可验证的区域岩石：%s" % role)
+		var probe_data = map_data.get_cell(probe_cell.x, probe_cell.y)
+		var expected_color: Color = preview_node.call(
+			"_apply_durability_shade",
+			REGION_ROCK_STYLES.get_wall_color(style_id),
+			probe_data
+		) as Color
+		var actual_color: Color = image.get_pixel(
+			probe_cell.x,
+			map_data.height - 1 - probe_cell.y
+		)
+		if not _colors_close(actual_color, expected_color):
+			return _fail("四区域预览没有直接绘制 %s 岩石颜色" % role)
+	if observed_style_ids.size() != MAP_TYPES.REGION_ROLE_ORDER.size():
+		return _fail("四区域预览必须使用四种不同岩石类型")
 
 	var texture_rect: TextureRect = TextureRect.new()
 	var hover_rect: ColorRect = ColorRect.new()
@@ -238,6 +250,58 @@ func _test_four_region_preview(preview_node: Node) -> bool:
 	seed_label.free()
 	status_label.free()
 	return true
+
+
+func _find_plain_wall_cell_for_role(
+	map_data: WdcMapGenerationTypes.MapData,
+	role: String
+) -> Vector2i:
+	var marker_cells: Dictionary = _preview_marker_cell_set(map_data)
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			var cell_coord: Vector2i = Vector2i(x, y)
+			if marker_cells.has(_cell_key(cell_coord)):
+				continue
+			var region = map_data.region_plan.try_get_at(cell_coord)
+			if region == null or region.role != role:
+				continue
+			var cell = map_data.get_cell(x, y)
+			if (
+				cell != null
+				and cell.cell_type == MAP_TYPES.CellType.WALL
+				and not cell.has_mineral
+				and cell.special_block_type == MAP_TYPES.SpecialBlockType.NONE
+				and cell.poi_type == MAP_TYPES.PoiType.NONE
+				and cell.trace_type == MAP_TYPES.PoiType.NONE
+			):
+				return cell_coord
+	return Vector2i(-1, -1)
+
+
+func _preview_marker_cell_set(map_data: WdcMapGenerationTypes.MapData) -> Dictionary:
+	var result: Dictionary = {}
+	for poi_center_value: Variant in map_data.poi_centers:
+		if poi_center_value is Dictionary:
+			result[_cell_key(_cell_from_variant(poi_center_value))] = true
+	for region in map_data.region_plan.get_region_snapshots():
+		result[_cell_key(region.center_cell)] = true
+	for site: Dictionary in map_data.player_spawn_points:
+		result[_cell_key(_cell_from_variant(site))] = true
+	for site: Dictionary in map_data.extraction_sites:
+		result[_cell_key(_cell_from_variant(site))] = true
+	for site: Dictionary in map_data.monster_sites:
+		result[_cell_key(_cell_from_variant(site.get("cell", null)))] = true
+	for site: Dictionary in map_data.trap_sites:
+		result[_cell_key(_cell_from_variant(site.get("cell", null)))] = true
+	for camp_value: Variant in map_data.camp_encounters:
+		if not (camp_value is Dictionary):
+			continue
+		var camp: Dictionary = camp_value as Dictionary
+		result[_cell_key(_cell_from_variant(camp.get("chest_cell", null)))] = true
+		for guard_value: Variant in camp.get("guard_sites", []) as Array:
+			if guard_value is Dictionary:
+				result[_cell_key(_cell_from_variant((guard_value as Dictionary).get("cell", null)))] = true
+	return result
 
 
 func _expected_four_region_content_counts(
@@ -304,6 +368,10 @@ func _cell_from_variant(value: Variant) -> Vector2i:
 			int((value as Dictionary).get("y", 0))
 		)
 	return Vector2i.ZERO
+
+
+func _cell_key(cell: Vector2i) -> String:
+	return "%d:%d" % [cell.x, cell.y]
 
 
 func _fail(message: String) -> bool:

@@ -19,6 +19,7 @@ func _init() -> void:
 		_test_seed_corpus(parse_result.config)
 		_test_map_sizes(parse_result.config)
 		_test_retry_exhaustion(parse_result.config)
+		_test_noisy_ellipse_boundary()
 	_test_canonical_center_tie_break()
 	_finish()
 
@@ -138,6 +139,86 @@ func _test_retry_exhaustion(config: Variant) -> void:
 			_has_issue(draft.get_issues(), "region_partition_failed"),
 			"不可能布局的 attempt %d 必须返回 region_partition_failed" % attempt_index
 		)
+
+
+func _test_noisy_ellipse_boundary() -> void:
+	var producer = LAYOUT_PRODUCER_SCRIPT.new()
+	var bounds: Rect2i = Rect2i(8, 11, 44, 40)
+	var first_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	first_rng.seed = 90210
+	var first_cells: Array = producer.call(
+		"_build_mask_cells",
+		bounds,
+		"noisy_ellipse",
+		first_rng
+	) as Array
+	var second_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	second_rng.seed = 90210
+	var second_cells: Array = producer.call(
+		"_build_mask_cells",
+		bounds,
+		"noisy_ellipse",
+		second_rng
+	) as Array
+	_expect(not first_cells.is_empty(), "噪声椭圆必须生成非空区域")
+	_expect(first_cells == second_cells, "噪声椭圆在相同 seed 下必须稳定")
+	var noisy_set: Dictionary = _cell_set(first_cells)
+	var plain_set: Dictionary = _plain_ellipse_cell_set(bounds)
+	var difference_count: int = 0
+	for key: Variant in noisy_set.keys():
+		if not plain_set.has(key):
+			difference_count += 1
+	for key: Variant in plain_set.keys():
+		if not noisy_set.has(key):
+			difference_count += 1
+	_expect(difference_count >= 8, "噪声椭圆轮廓必须明显区别于规则椭圆")
+	_expect(_is_four_connected(first_cells), "噪声椭圆必须保持四连通且无离散噪点")
+
+
+func _plain_ellipse_cell_set(bounds: Rect2i) -> Dictionary:
+	var result: Dictionary = {}
+	var center: Vector2 = Vector2(bounds.get_center()) - Vector2(0.5, 0.5)
+	var radius_x: float = maxf(float(bounds.size.x) * 0.5, 1.0)
+	var radius_y: float = maxf(float(bounds.size.y) * 0.5, 1.0)
+	for y: int in range(bounds.position.y, bounds.end.y):
+		for x: int in range(bounds.position.x, bounds.end.x):
+			var normalized_x: float = (float(x) + 0.5 - center.x) / radius_x
+			var normalized_y: float = (float(y) + 0.5 - center.y) / radius_y
+			if normalized_x * normalized_x + normalized_y * normalized_y <= 1.0:
+				result[_cell_key(Vector2i(x, y))] = true
+	return result
+
+
+func _cell_set(cells: Array) -> Dictionary:
+	var result: Dictionary = {}
+	for cell_value: Variant in cells:
+		var cell: Vector2i = cell_value as Vector2i
+		result[_cell_key(cell)] = true
+	return result
+
+
+func _is_four_connected(cells: Array) -> bool:
+	if cells.is_empty():
+		return false
+	var remaining: Dictionary = _cell_set(cells)
+	var queue: Array[Vector2i] = [cells[0] as Vector2i]
+	remaining.erase(_cell_key(queue[0]))
+	var cursor: int = 0
+	while cursor < queue.size():
+		var cell: Vector2i = queue[cursor]
+		cursor += 1
+		for direction: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var neighbor: Vector2i = cell + direction
+			var key: String = _cell_key(neighbor)
+			if not remaining.has(key):
+				continue
+			remaining.erase(key)
+			queue.append(neighbor)
+	return remaining.is_empty()
+
+
+func _cell_key(cell: Vector2i) -> String:
+	return "%d:%d" % [cell.x, cell.y]
 
 
 func _test_canonical_center_tie_break() -> void:
