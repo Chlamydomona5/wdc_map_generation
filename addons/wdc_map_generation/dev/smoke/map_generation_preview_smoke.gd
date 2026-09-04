@@ -54,6 +54,10 @@ func _init() -> void:
 		push_error("map_generation_preview_smoke: preview scene did not instantiate")
 		quit(1)
 		return
+	if str(preview_node.call("_resolve_config_selector_default_filename", configs)) != "ancient_old_mine":
+		push_error("map_generation_preview_smoke: 参数调试默认配置不是 ancient_old_mine")
+		quit(1)
+		return
 	root.add_child(preview_node)
 	var site_summary_value: Variant = preview_node.call("_build_site_status_summary", map_data)
 	if not (site_summary_value is Dictionary):

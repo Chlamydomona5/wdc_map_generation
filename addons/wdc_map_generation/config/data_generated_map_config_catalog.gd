@@ -6,7 +6,7 @@ const PARENT_PROJECT_CONFIG_DIRECTORY_PATH: String = (
 	"res://map_generation/addons/wdc_map_generation/config/generated_map_configs"
 )
 const CONFIG_EXTENSION: String = ".json"
-const DEFAULT_CONFIG_BASENAME: String = "default_generated_map"
+const DEFAULT_CONFIG_BASENAME: String = "ancient_old_mine"
 
 const GENERATED_MAP_TYPES_SCRIPT = preload("../core/generated_map_types.gd")
 const WdcMapGenerationTypes = GENERATED_MAP_TYPES_SCRIPT
@@ -47,6 +47,9 @@ static func get_config_extension() -> String:
 
 static func get_default_config_filename() -> String:
 	var available_configs: Array[Dictionary] = list_available_configs()
+	for config_entry: Dictionary in available_configs:
+		if str(config_entry.get("filename", "")) == DEFAULT_CONFIG_BASENAME:
+			return DEFAULT_CONFIG_BASENAME
 	if not available_configs.is_empty():
 		return str(available_configs[0].get("filename", DEFAULT_CONFIG_BASENAME))
 	return DEFAULT_CONFIG_BASENAME

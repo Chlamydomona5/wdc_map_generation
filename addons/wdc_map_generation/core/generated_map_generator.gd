@@ -22,6 +22,7 @@ const STAGE_CORRIDOR: StringName = &"CORRIDOR"
 const STAGE_TRACE: StringName = &"TRACE"
 const STAGE_MINERAL: StringName = &"MINERAL"
 const STAGE_TRAP: StringName = &"TRAP"
+const FOUR_REGION_POI_ATTEMPT_SAFETY_MULTIPLIER: int = 4
 
 
 func generate_full(config: WdcMapGenerationTypes.MapConfig) -> WdcMapGenerationTypes.MapData:
@@ -472,9 +473,15 @@ func _generate_four_region_regular_pois(
 			false
 		)
 		_shuffle_vector2i_array(candidates, rng)
+		var candidate_limit: int = _resolve_four_region_poi_candidate_limit(
+			config,
+			entries,
+			target_count,
+			candidates.size()
+		)
 		var placed_count: int = 0
 		var candidate_cursor: int = 0
-		while placed_count < target_count and candidate_cursor < candidates.size():
+		while placed_count < target_count and candidate_cursor < candidate_limit:
 			var entry: Dictionary = resolver.pick_weighted_from_entries(entries, rng)
 			if entry.is_empty():
 				break
@@ -512,6 +519,29 @@ func _generate_four_region_regular_pois(
 				"普通 POI 数量低于 minimum_count：%d < %d" % [placed_count, minimum_count]
 			)]
 	return []
+
+
+## 方法职责：将四区域普通 POI 搜索限制在模板声明的尝试预算内，避免失败候选遍历整张地图。
+func _resolve_four_region_poi_candidate_limit(
+	config: WdcMapGenerationTypes.MapConfig,
+	entries: Array[Dictionary],
+	target_count: int,
+	candidate_count: int
+) -> int:
+	var attempts_per_poi: int = 1
+	for entry: Dictionary in entries:
+		var template: Dictionary = _find_template_by_id(
+			config.poi_templates,
+			str(entry.get("template_id", ""))
+		)
+		attempts_per_poi = maxi(
+			attempts_per_poi,
+			maxi(int(template.get("placement", {}).get("poi_attempts", 1)), 1)
+		)
+	return mini(
+		candidate_count,
+		attempts_per_poi * maxi(target_count, 1) * FOUR_REGION_POI_ATTEMPT_SAFETY_MULTIPLIER
+	)
 
 
 func _generate_four_region_minerals(

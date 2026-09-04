@@ -45,8 +45,10 @@ func resolve_role(role: String) -> Dictionary:
 
 
 func is_cell_in_role(cell: Vector2i, role: String) -> bool:
-	var resolved: Dictionary = resolve_cell(cell)
-	return bool(resolved.get("valid", false)) and str(resolved.get("role", "")) == role
+	if not is_ready():
+		return false
+	var region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
+	return region != null and region.role == role
 
 
 func resolve_footprint_for_role(cells: Array, role: String) -> Dictionary:
@@ -92,20 +94,24 @@ func resolve_footprint(cells: Array) -> Dictionary:
 		return _failure("empty_region_footprint", "内容 footprint 不能为空")
 	if not (cells[0] is Vector2i):
 		return _failure("invalid_region_footprint", "内容 footprint 必须由 Vector2i 坐标组成")
-	var resolved: Dictionary = resolve_cell(cells[0] as Vector2i)
-	if not bool(resolved.get("valid", false)):
-		return resolved
-	var expected_index: int = int(resolved.get("region_index", -1))
+	if not is_ready():
+		return _failure("region_content_resolver_not_ready", "RegionContentResolver 尚未初始化")
+	var first_region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(
+		cells[0] as Vector2i
+	)
+	if first_region == null:
+		return _failure("region_membership_missing", "坐标不属于任何区域")
+	var expected_index: int = first_region.index
 	for cell_value: Variant in cells:
 		if not (cell_value is Vector2i):
 			return _failure("invalid_region_footprint", "内容 footprint 必须由 Vector2i 坐标组成")
 		var cell: Vector2i = cell_value as Vector2i
-		var current: Dictionary = resolve_cell(cell)
-		if not bool(current.get("valid", false)):
-			return current
-		if int(current.get("region_index", -1)) != expected_index:
+		var current_region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
+		if current_region == null:
+			return _failure("region_membership_missing", "坐标不属于任何区域")
+		if current_region.index != expected_index:
 			return _failure("content_footprint_crosses_region", "内容 footprint 不得跨越区域边界")
-	return resolved
+	return _resolve_region_snapshot(first_region)
 
 
 func get_profile_for_role(role: String) -> Dictionary:

@@ -731,7 +731,8 @@ func _test_failed_generation_atomicity(
 	var baseline_seed: int = generator.last_resolved_seed
 	var baseline_signature: Dictionary = _core_artifact_signature(map_data)
 	var impossible_config = config.deep_clone()
-	impossible_config.seed = baseline_seed + 7919
+	# Seed 2 的首个 layout attempt 可用，使本夹具只隔离核心 POI 放置失败。
+	impossible_config.seed = 2
 	for profile: Dictionary in impossible_config.region_generation.get("layout_profiles", []) as Array:
 		profile["max_attempts"] = 1
 	var high_1_slot: Dictionary = impossible_config.region_layout.get(

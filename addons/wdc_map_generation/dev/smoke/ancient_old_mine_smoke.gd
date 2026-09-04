@@ -9,6 +9,10 @@ var _failures: Array[String] = []
 
 
 func _init() -> void:
+	_expect(
+		CONFIG_CATALOG.get_default_config_filename() == "ancient_old_mine",
+		"standalone map-generation 默认配置必须为 ancient_old_mine"
+	)
 	var raw_config: Dictionary = CONFIG_CATALOG.load_config_dict_by_filename("ancient_old_mine")
 	_expect(not raw_config.is_empty(), "必须能从 canonical 配置目录加载 ancient_old_mine")
 	if raw_config.is_empty():
@@ -151,6 +155,27 @@ func _test_generated_artifact(config: Variant) -> void:
 	)
 	if map_data == null:
 		return
+	_expect(
+		generator.last_four_region_success_attempt == 0,
+		"古代旧矿验收 seed 必须在首个 generation attempt 成功，避免预览切换触发长时间重试"
+	)
+	var high_2_profile: Dictionary = config.try_get_region_content_profile(
+		"ancient_old_mine_high_2_content"
+	)
+	var high_2_poi_section: Dictionary = high_2_profile.get("pois", {}) as Dictionary
+	var high_2_poi_entries: Array[Dictionary] = []
+	for entry_value: Variant in high_2_poi_section.get("entries", []) as Array:
+		if entry_value is Dictionary:
+			high_2_poi_entries.append(entry_value as Dictionary)
+	_expect(
+		generator._resolve_four_region_poi_candidate_limit(
+			config,
+			high_2_poi_entries,
+			int(high_2_poi_section.get("target_count", 0)),
+			10_000
+		) == 320,
+		"四区域普通 POI 候选扫描必须受模板尝试预算限制"
+	)
 	_expect(map_data.layout_mode == MAP_TYPES.LAYOUT_MODE_PVE_FOUR_REGION_V1, "最终地图 mode 错误")
 	_expect(map_data.region_plan is MAP_TYPES.RegionPlan, "最终地图必须携带 RegionPlan")
 	_expect(map_data.region_boss_encounter is MAP_TYPES.BossEncounterDescriptor, "最终地图必须携带单值 BOSS descriptor")

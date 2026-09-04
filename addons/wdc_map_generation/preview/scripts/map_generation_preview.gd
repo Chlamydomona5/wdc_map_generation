@@ -614,17 +614,37 @@ func _normalize_parameter_path(field_key: String) -> String:
 func _load_config_list() -> void:
 	_config_selector.clear()
 	var configs: Array[Dictionary] = CONFIG_CATALOG.list_available_configs()
+	var default_filename: String = _resolve_config_selector_default_filename(configs)
+	var default_index: int = -1
 	for config_entry: Dictionary in configs:
 		if _is_smoke_test_config_entry(config_entry):
 			continue
 		var filename: String = str(config_entry.get("filename", ""))
 		_config_selector.add_item(str(config_entry.get("display_name", filename)))
-		_config_selector.set_item_metadata(_config_selector.item_count - 1, filename)
+		var item_index: int = _config_selector.item_count - 1
+		_config_selector.set_item_metadata(item_index, filename)
+		if filename == default_filename:
+			default_index = item_index
 	if _config_selector.item_count > 0:
-		_config_selector.select(0)
-		_current_config_filename = str(_config_selector.get_item_metadata(0))
+		var selected_index: int = default_index if default_index >= 0 else 0
+		_config_selector.select(selected_index)
+		_current_config_filename = str(_config_selector.get_item_metadata(selected_index))
 		_filename_input.text = _current_config_filename
 		_load_current_config_into_editor()
+
+
+func _resolve_config_selector_default_filename(configs: Array[Dictionary]) -> String:
+	var fallback_filename: String = ""
+	var default_filename: String = CONFIG_CATALOG.get_default_config_filename()
+	for config_entry: Dictionary in configs:
+		if _is_smoke_test_config_entry(config_entry):
+			continue
+		var filename: String = str(config_entry.get("filename", ""))
+		if fallback_filename.is_empty():
+			fallback_filename = filename
+		if filename == default_filename:
+			return filename
+	return fallback_filename
 
 
 func _is_smoke_test_config_entry(config_entry: Dictionary) -> bool:
