@@ -28,6 +28,12 @@ const COLOR_NEST_SITE: Color = Color(0.92, 0.24, 0.24, 1.0)
 const COLOR_CAMP_GUARD_SITE: Color = Color(0.38, 1.0, 0.58, 1.0)
 const COLOR_CAMP_CHEST_SITE: Color = Color(1.0, 0.72, 0.16, 1.0)
 const COLOR_TRAP: Color = Color(0.95, 0.35, 0.20, 1.0)
+const COLOR_REGION_REGULAR: Color = Color(0.32, 0.52, 0.42, 1.0)
+const COLOR_REGION_HIGH_1: Color = Color(0.82, 0.66, 0.20, 1.0)
+const COLOR_REGION_HIGH_2: Color = Color(0.92, 0.36, 0.18, 1.0)
+const COLOR_REGION_BOSS: Color = Color(0.72, 0.18, 0.78, 1.0)
+const COLOR_REGION_CENTER: Color = Color(0.98, 0.98, 0.98, 1.0)
+const COLOR_CORE_POI: Color = Color(1.0, 0.26, 0.72, 1.0)
 const PREVIEW_MIN_ZOOM: float = 0.25
 const PREVIEW_MAX_ZOOM: float = 48.0
 const PREVIEW_PAN_VISIBLE_MARGIN_PX: float = 24.0
@@ -715,21 +721,35 @@ func _rebuild_preview(randomize_seed: bool) -> void:
 	_fit_preview_to_viewport()
 	_seed_label.text = "种子：%d" % _preview_seed
 	var site_summary: Dictionary = _build_site_status_summary(map_data)
-	_set_status(
-		"预览已重建：文件=%s 尺寸=%sx%s 出生=%d 撤离=%d 怪物点=%d 营地=%d inner=%d middle=%d fallback=%d"
-		% [
-			_current_config_filename,
-			map_data.width,
-			map_data.height,
-			int(site_summary.get("spawn_count", 0)),
-			int(site_summary.get("extraction_count", 0)),
-			int(site_summary.get("monster_site_count", 0)),
-			int(site_summary.get("camp_count", 0)),
-			int(site_summary.get("inner_count", 0)),
-			int(site_summary.get("middle_count", 0)),
-			int(site_summary.get("fallback_count", 0)),
-		]
-	)
+	if map_data.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+		_set_status(
+			"预览已重建：文件=%s 尺寸=%sx%s 出生=%d 撤离=%d 核心POI=%d %s"
+			% [
+				_current_config_filename,
+				map_data.width,
+				map_data.height,
+				int(site_summary.get("spawn_count", 0)),
+				int(site_summary.get("extraction_count", 0)),
+				int(site_summary.get("core_poi_count", 0)),
+				_format_four_region_content_summary(site_summary),
+			]
+		)
+	else:
+		_set_status(
+			"预览已重建：文件=%s 尺寸=%sx%s 出生=%d 撤离=%d 怪物点=%d 营地=%d inner=%d middle=%d fallback=%d"
+			% [
+				_current_config_filename,
+				map_data.width,
+				map_data.height,
+				int(site_summary.get("spawn_count", 0)),
+				int(site_summary.get("extraction_count", 0)),
+				int(site_summary.get("monster_site_count", 0)),
+				int(site_summary.get("camp_count", 0)),
+				int(site_summary.get("inner_count", 0)),
+				int(site_summary.get("middle_count", 0)),
+				int(site_summary.get("fallback_count", 0)),
+			]
+		)
 
 
 func _clear_preview_result() -> void:
@@ -947,6 +967,34 @@ func _resolve_cell_display_name(cell: WdcMapGenerationTypes.CellData) -> String:
 	return "普通石头"
 
 
+func _region_overlay_color(role: String) -> Color:
+	match role:
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_1:
+			return COLOR_REGION_HIGH_1
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_2:
+			return COLOR_REGION_HIGH_2
+		WdcMapGenerationTypes.REGION_ROLE_BOSS:
+			return COLOR_REGION_BOSS
+		_:
+			return COLOR_REGION_REGULAR
+
+
+func _cell_from_poi_instance(instance: Dictionary) -> Vector2i:
+	var center_value: Variant = instance.get("center_cell", null)
+	if center_value is Vector2i:
+		return center_value as Vector2i
+	if center_value is Dictionary:
+		return _vector2i_from_variant(center_value)
+	var main_room_value: Variant = instance.get("main_room", null)
+	if main_room_value is Dictionary:
+		var main_room: Dictionary = main_room_value as Dictionary
+		return Vector2i(
+			int(main_room.get("x", 0)) + int(main_room.get("width", 0)) / 2,
+			int(main_room.get("y", 0)) + int(main_room.get("height", 0)) / 2
+		)
+	return Vector2i(-1, -1)
+
+
 func _resolve_preview_seed(
 	config_dict: Dictionary,
 	randomize_seed: bool,
@@ -974,11 +1022,23 @@ func _build_map_preview_image(map_data: WdcMapGenerationTypes.MapData) -> Image:
 	var image: Image = Image.create(map_data.width, map_data.height, false, Image.FORMAT_RGBA8)
 	for y: int in range(map_data.height):
 		for x: int in range(map_data.width):
-			image.set_pixel(x, map_data.height - 1 - y, _resolve_map_cell_color(map_data.get_cell(x, y)))
+			var cell_coord: Vector2i = Vector2i(x, y)
+			var cell_color: Color = _resolve_map_cell_color(map_data.get_cell(x, y))
+			if map_data.region_plan is WdcMapGenerationTypes.RegionPlan:
+				var region = (map_data.region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(
+					cell_coord
+				)
+				if region != null:
+					cell_color = cell_color.lerp(_region_overlay_color(region.role), 0.22)
+			image.set_pixel(x, map_data.height - 1 - y, cell_color)
 	for poi_center_value: Variant in map_data.poi_centers:
 		if poi_center_value is Dictionary:
 			var poi_center: Dictionary = poi_center_value as Dictionary
-			_paint_cross(image, Vector2i(int(poi_center.get("x", 0)), int(poi_center.get("y", 0))), COLOR_GOLD, map_data.height)
+			var poi_color: Color = COLOR_CORE_POI if bool(poi_center.get("is_core", false)) else COLOR_GOLD
+			_paint_cross(image, Vector2i(int(poi_center.get("x", 0)), int(poi_center.get("y", 0))), poi_color, map_data.height)
+	if map_data.region_plan is WdcMapGenerationTypes.RegionPlan:
+		for region in (map_data.region_plan as WdcMapGenerationTypes.RegionPlan).get_region_snapshots():
+			_paint_cross(image, region.center_cell, COLOR_REGION_CENTER, map_data.height)
 	for spawn_point_value: Variant in map_data.player_spawn_points:
 		if spawn_point_value is Dictionary:
 			var spawn_point: Dictionary = spawn_point_value as Dictionary
@@ -1031,13 +1091,56 @@ func _build_site_status_summary(map_data: WdcMapGenerationTypes.MapData) -> Dict
 		"inner_count": 0,
 		"middle_count": 0,
 		"fallback_count": 0,
+		"regular_count": 0,
+		"high_1_count": 0,
+		"high_2_count": 0,
+		"boss_count": 0,
+		"core_poi_count": 0,
 	}
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		for content_kind: String in ["poi", "mineral", "trap", "monster"]:
+			summary["%s_%s_count" % [role, content_kind]] = 0
 	if map_data == null:
 		return summary
 	summary["spawn_count"] = map_data.player_spawn_points.size()
 	summary["extraction_count"] = map_data.extraction_sites.size()
 	summary["monster_site_count"] = map_data.monster_sites.size()
 	summary["camp_count"] = map_data.camp_encounters.size()
+	if map_data.region_plan is WdcMapGenerationTypes.RegionPlan:
+		for region in (map_data.region_plan as WdcMapGenerationTypes.RegionPlan).get_region_snapshots():
+			summary["%s_count" % region.role] = region.cell_count
+		for poi_instance: Dictionary in map_data.poi_instances:
+			if bool(poi_instance.get("is_core", false)):
+				summary["core_poi_count"] = int(summary["core_poi_count"]) + 1
+			else:
+				_increment_region_content_count(
+					summary,
+					_resolve_summary_region_role(map_data, poi_instance, "center_cell"),
+					"poi"
+				)
+		for mineral_site: Dictionary in map_data.mineral_sites:
+			_increment_region_content_count(
+				summary,
+				_resolve_summary_region_role_from_cell(
+					map_data,
+					mineral_site,
+					"cell",
+					false
+				),
+				"mineral"
+			)
+		for trap_site: Dictionary in map_data.trap_sites:
+			_increment_region_content_count(
+				summary,
+				_resolve_summary_region_role(map_data, trap_site, "cell"),
+				"trap"
+			)
+		for monster_site: Dictionary in map_data.monster_sites:
+			_increment_region_content_count(
+				summary,
+				_resolve_summary_region_role(map_data, monster_site, "cell"),
+				"monster"
+			)
 	for spawn_point: Dictionary in map_data.player_spawn_points:
 		if str(spawn_point.get("fallback_reason", "")).strip_edges() != "":
 			summary["fallback_count"] = int(summary["fallback_count"]) + 1
@@ -1052,10 +1155,94 @@ func _build_site_status_summary(map_data: WdcMapGenerationTypes.MapData) -> Dict
 	return summary
 
 
+func _format_four_region_content_summary(summary: Dictionary) -> String:
+	var region_parts: Array[String] = []
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		region_parts.append(
+			"%s[面积=%d 普通POI=%d 矿物=%d 陷阱=%d 怪物点=%d]"
+			% [
+				role,
+				int(summary.get("%s_count" % role, 0)),
+				int(summary.get("%s_poi_count" % role, 0)),
+				int(summary.get("%s_mineral_count" % role, 0)),
+				int(summary.get("%s_trap_count" % role, 0)),
+				int(summary.get("%s_monster_count" % role, 0)),
+			]
+		)
+	return " ".join(region_parts)
+
+
+func _increment_region_content_count(
+	summary: Dictionary,
+	role: String,
+	content_kind: String
+) -> void:
+	if role not in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		return
+	var key: String = "%s_%s_count" % [role, content_kind]
+	summary[key] = int(summary.get(key, 0)) + 1
+
+
+func _resolve_summary_region_role(
+	map_data: WdcMapGenerationTypes.MapData,
+	item: Dictionary,
+	cell_field: String
+) -> String:
+	var explicit_role: String = str(item.get("region_role", ""))
+	if explicit_role in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		return explicit_role
+	return _resolve_summary_region_role_from_cell(map_data, item, cell_field)
+
+
+func _resolve_summary_region_role_from_cell(
+	map_data: WdcMapGenerationTypes.MapData,
+	item: Dictionary,
+	cell_field: String,
+	allow_flat_cell_fallback: bool = true
+) -> String:
+	if not (map_data.region_plan is WdcMapGenerationTypes.RegionPlan):
+		return ""
+	var cell_value: Variant = item.get(cell_field, null)
+	if (
+		cell_value == null
+		and allow_flat_cell_fallback
+		and item.has("x")
+		and item.has("y")
+	):
+		cell_value = item
+	if cell_value == null:
+		return ""
+	var region = (map_data.region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(
+		_vector2i_from_variant(cell_value)
+	)
+	return region.role if region != null else ""
+
+
 func _resolve_cell_site_hover_info(cell: Vector2i) -> String:
 	if _current_map_data == null:
 		return ""
 	var parts: Array[String] = []
+	if _current_map_data.region_plan is WdcMapGenerationTypes.RegionPlan:
+		var region = (_current_map_data.region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
+		if region != null:
+			parts.append(
+				"区域（role=%s，id=%s，rank=%d）" % [
+					region.role,
+					region.id,
+					region.difficulty_rank,
+				]
+			)
+	for poi_instance: Dictionary in _current_map_data.poi_instances:
+		if _cell_from_poi_instance(poi_instance) != cell:
+			continue
+		var poi_fields: Array[String] = [
+			"模板=%s" % str(poi_instance.get("template_id", "")),
+			"instance=%s" % str(poi_instance.get("instance_id", "")),
+			"role=%s" % str(poi_instance.get("region_role", "")),
+		]
+		if bool(poi_instance.get("is_core", false)):
+			poi_fields.append("核心POI")
+		parts.append("POI（%s）" % "，".join(poi_fields))
 	for spawn_point: Dictionary in _current_map_data.player_spawn_points:
 		if _vector2i_from_variant(spawn_point) == cell:
 			parts.append(_format_site_hover_line("玩家出生点", spawn_point))

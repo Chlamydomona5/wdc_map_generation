@@ -3,10 +3,14 @@ extends RefCounted
 
 const WdcMapGenerationTypes = preload("generated_map_types.gd")
 const WdcMapGenerationTileRules = preload("generated_map_tile_rules.gd")
+const WdcFourRegionLayoutProducer = preload("four_region_layout_producer.gd")
+const WdcFourRegionLayoutValidator = preload("four_region_layout_validator.gd")
+const WdcRegionContentResolver = preload("region_content_resolver.gd")
 
 signal generation_stage_completed(stage: StringName, map_data: WdcMapGenerationTypes.MapData)
 
 var last_resolved_seed: int = 0
+var last_four_region_success_attempt: int = -1
 var last_generation_error: String = ""
 var last_generation_issues: Array[Dictionary] = []
 
@@ -96,6 +100,7 @@ func generate_step_by_step(config: WdcMapGenerationTypes.MapConfig) -> Array[Dic
 func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapshots: bool) -> Dictionary:
 	last_generation_error = ""
 	last_generation_issues.clear()
+	last_four_region_success_attempt = -1
 	if config == null:
 		return _fail_generation(
 			WdcMapGenerationTypes.make_generation_issue(
@@ -111,14 +116,7 @@ func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapsho
 		last_generation_error = str(last_generation_issues[0].get("message", "地图配置无效"))
 		return {}
 	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
-		return _fail_generation(
-			WdcMapGenerationTypes.make_generation_issue(
-				"region_layout_mode_not_implemented",
-				"region_layout.mode",
-				"",
-				"pve_four_region_v1 区域生成尚未实现"
-			)
-		)
+		return _generate_four_region_internal(config, capture_snapshots)
 	if config.layout_mode != WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL:
 		return _fail_generation(
 			WdcMapGenerationTypes.make_generation_issue(
@@ -162,6 +160,2304 @@ func _generate_internal(config: WdcMapGenerationTypes.MapConfig, capture_snapsho
 	}
 
 
+func _generate_four_region_internal(
+	config: WdcMapGenerationTypes.MapConfig,
+	capture_snapshots: bool
+) -> Dictionary:
+	var normalized_config: WdcMapGenerationTypes.MapConfig = config
+	normalized_config.normalize()
+	var resolved_seed: int = _resolve_seed(normalized_config.seed)
+	var producer: WdcFourRegionLayoutProducer = WdcFourRegionLayoutProducer.new()
+	var max_attempts: int = producer.get_max_attempts(normalized_config)
+	var terminal_issues: Array[Dictionary] = []
+	for attempt_index: int in range(max_attempts):
+		var draft = producer.build_attempt(normalized_config, resolved_seed, attempt_index)
+		if not draft.is_success():
+			terminal_issues = draft.get_issues()
+			continue
+		var map_data: WdcMapGenerationTypes.MapData = WdcMapGenerationTypes.MapData.new()
+		map_data.layout_mode = WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1
+		map_data.init_grid(normalized_config.width, normalized_config.height)
+		var terrain_rng: RandomNumberGenerator = _make_four_region_rng(
+			resolved_seed,
+			attempt_index,
+			101
+		)
+		_fill_noise(map_data, normalized_config.fill_percent, terrain_rng)
+		_smooth_caves(map_data, normalized_config.smooth_iterations)
+		_dig_corridors(map_data, normalized_config, terrain_rng)
+		var core_result: Dictionary = _place_four_region_core_pois(
+			map_data,
+			normalized_config,
+			draft.membership,
+			draft.centers_by_role,
+			attempt_index,
+			resolved_seed
+		)
+		if not bool(core_result.get("success", false)):
+			terminal_issues = _extract_dictionary_array(core_result.get("issues", []))
+			continue
+		var plan_result: Dictionary = _build_four_region_plan(
+			normalized_config,
+			draft.membership,
+			draft.centers_by_role,
+			core_result.get("instances_by_role", {}) as Dictionary
+		)
+		if not bool(plan_result.get("success", false)):
+			terminal_issues = _extract_dictionary_array(plan_result.get("issues", []))
+			continue
+		map_data.region_plan = plan_result.get("plan")
+		var encounter_result: Dictionary = _build_four_region_boss_descriptor(
+			normalized_config,
+			map_data.region_plan,
+			core_result.get("instances_by_role", {}) as Dictionary
+		)
+		if not bool(encounter_result.get("success", false)):
+			terminal_issues = _extract_dictionary_array(encounter_result.get("issues", []))
+			continue
+		map_data.region_boss_encounter = encounter_result.get("descriptor")
+		var resolver: WdcRegionContentResolver = WdcRegionContentResolver.new(
+			normalized_config,
+			map_data.region_plan
+		)
+		var content_rng: RandomNumberGenerator = _make_four_region_rng(
+			resolved_seed,
+			attempt_index,
+			307
+		)
+		var content_issues: Array[Dictionary] = []
+		content_issues.append_array(_generate_four_region_regular_pois(
+			map_data,
+			normalized_config,
+			resolver,
+			content_rng,
+			attempt_index
+		))
+		if content_issues.is_empty():
+			content_issues.append_array(_generate_four_region_minerals(
+				map_data,
+				normalized_config,
+				resolver,
+				content_rng
+			))
+		if content_issues.is_empty():
+			content_issues.append_array(_generate_four_region_room_contents(
+				map_data,
+				normalized_config,
+				resolver,
+				content_rng
+			))
+		if content_issues.is_empty():
+			content_issues.append_array(_generate_four_region_traps(
+				map_data,
+				resolver,
+				content_rng
+			))
+		if content_issues.is_empty():
+			content_issues.append_array(_generate_four_region_population_sites(
+				map_data,
+				normalized_config,
+				resolver,
+				content_rng
+			))
+		if not content_issues.is_empty():
+			terminal_issues = content_issues
+			continue
+		_apply_four_region_durability(map_data, resolver)
+		var site_issues: Array[Dictionary] = _generate_four_region_spawn_and_extraction(
+			map_data,
+			normalized_config,
+			resolver,
+			resolved_seed,
+			attempt_index
+		)
+		if not site_issues.is_empty():
+			terminal_issues = site_issues
+			continue
+		var final_issues: Array[Dictionary] = _validate_four_region_artifact(map_data)
+		if not final_issues.is_empty():
+			terminal_issues = final_issues
+			continue
+		_recalculate_stats(map_data)
+		last_resolved_seed = resolved_seed
+		last_four_region_success_attempt = attempt_index
+		var snapshots: Array[Dictionary] = []
+		_emit_stage(snapshots, STAGE_MINERAL, map_data, "FINAL", capture_snapshots)
+		return {"map_data": map_data, "snapshots": snapshots}
+	if terminal_issues.is_empty():
+		terminal_issues.append(WdcMapGenerationTypes.make_generation_issue(
+			"region_partition_failed",
+			"region_generation.layout_profiles",
+			"",
+			"四区域生成在最大 attempt 内失败"
+		))
+	return _fail_generation_issues(terminal_issues)
+
+
+func _place_four_region_core_pois(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	membership: PackedInt32Array,
+	centers_by_role: Dictionary,
+	attempt_index: int,
+	resolved_seed: int
+) -> Dictionary:
+	var instances_by_role: Dictionary = {}
+	for region_index: int in range(1, WdcMapGenerationTypes.REGION_ROLE_ORDER.size()):
+		var role: String = WdcMapGenerationTypes.REGION_ROLE_ORDER[region_index]
+		var slot: Dictionary = config.region_layout.get(role, {}) as Dictionary
+		var core_poi: Dictionary = slot.get("core_poi", {}) as Dictionary
+		var template_id: String = str(core_poi.get("template_id", ""))
+		var template: Dictionary = _find_template_by_id(config.poi_templates, template_id)
+		if template.is_empty():
+			return _four_region_failure(
+				"unknown_core_poi_reference",
+				"region_layout.%s.core_poi.template_id" % role,
+				role,
+				"核心 POI 模板不存在：%s" % template_id
+			)
+		var center: Vector2i = centers_by_role.get(role, Vector2i(-1, -1))
+		var max_offset: int = maxi(int(core_poi.get("max_center_offset_cells", 0)), 0)
+		var candidate_centers: Array[Vector2i] = _collect_center_offset_candidates(
+			center,
+			max_offset,
+			map_data,
+			membership,
+			region_index
+		)
+		var placed_instance: Dictionary = {}
+		var candidate_ordinal: int = 0
+		for candidate_center: Vector2i in candidate_centers:
+			var poi_rng: RandomNumberGenerator = _make_four_region_rng(
+				resolved_seed,
+				attempt_index,
+				401 + region_index * 101 + candidate_ordinal
+			)
+			placed_instance = _try_place_four_region_poi(
+				map_data,
+				config,
+				template,
+				role,
+				region_index,
+				membership,
+				candidate_center,
+				true,
+				attempt_index,
+				instances_by_role.size(),
+				poi_rng
+			)
+			if not placed_instance.is_empty():
+				break
+			candidate_ordinal += 1
+		if placed_instance.is_empty():
+			return _four_region_failure(
+				"core_poi_placement_failed",
+				"region_layout.%s.core_poi" % role,
+				role,
+				"核心 POI 无法在 canonical center 偏移范围内完整放入区域"
+			)
+		placed_instance["canonical_center"] = center
+		placed_instance["max_center_offset_cells"] = max_offset
+		for instance_index: int in range(map_data.poi_instances.size() - 1, -1, -1):
+			if str(map_data.poi_instances[instance_index].get("instance_id", "")) == str(placed_instance.get("instance_id", "")):
+				map_data.poi_instances[instance_index] = placed_instance
+				break
+		instances_by_role[role] = placed_instance
+	return {"success": true, "instances_by_role": instances_by_role, "issues": []}
+
+
+func _build_four_region_plan(
+	config: WdcMapGenerationTypes.MapConfig,
+	membership: PackedInt32Array,
+	centers_by_role: Dictionary,
+	instances_by_role: Dictionary
+) -> Dictionary:
+	var raw_regions: Array[Dictionary] = []
+	for region_index: int in range(WdcMapGenerationTypes.REGION_ROLE_ORDER.size()):
+		var role: String = WdcMapGenerationTypes.REGION_ROLE_ORDER[region_index]
+		var slot: Dictionary = config.region_layout.get(role, {}) as Dictionary
+		var raw_region: Dictionary = {
+			"index": region_index,
+			"id": str(slot.get("id", "")),
+			"display_name": str(slot.get("display_name", "")),
+			"role": role,
+			"difficulty_rank": WdcMapGenerationTypes.get_region_difficulty_rank(role),
+			"content_profile_id": str(slot.get("content_profile_id", "")),
+			"center_cell": centers_by_role.get(role, Vector2i(-1, -1)),
+		}
+		if role != WdcMapGenerationTypes.REGION_ROLE_REGULAR:
+			var instance: Dictionary = instances_by_role.get(role, {}) as Dictionary
+			raw_region["core_anchor_cell"] = instance.get("center_cell", Vector2i(-1, -1))
+			raw_region["core_poi_template_id"] = str(instance.get("template_id", ""))
+			raw_region["core_poi_instance_id"] = str(instance.get("instance_id", ""))
+		raw_regions.append(raw_region)
+	var build_result = WdcMapGenerationTypes.RegionPlan.create_structurally_validated(
+		WdcMapGenerationTypes.REGION_PLAN_SCHEMA_VERSION,
+		Vector2i(config.width, config.height),
+		raw_regions,
+		membership
+	)
+	if not build_result.is_success():
+		return {"success": false, "issues": build_result.get_issues()}
+	return {"success": true, "plan": build_result.plan, "issues": []}
+
+
+func _build_four_region_boss_descriptor(
+	config: WdcMapGenerationTypes.MapConfig,
+	region_plan: Variant,
+	instances_by_role: Dictionary
+) -> Dictionary:
+	var boss_slot: Dictionary = config.region_layout.get(
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+		{}
+	) as Dictionary
+	var boss_instance: Dictionary = instances_by_role.get(
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+		{}
+	) as Dictionary
+	var encounter_id: String = "%s:%s" % [
+		str(boss_slot.get("id", "")),
+		str(boss_instance.get("instance_id", "")),
+	]
+	var descriptor_result = WdcMapGenerationTypes.BossEncounterDescriptor.create_structurally_validated(
+		region_plan,
+		{
+			"encounter_id": encounter_id,
+			"region_id": str(boss_slot.get("id", "")),
+			"core_poi_instance_id": str(boss_instance.get("instance_id", "")),
+			"encounter_profile_id": str(boss_slot.get("encounter_profile_id", "")),
+			"anchors": [{
+				"id": "primary",
+				"cell": boss_instance.get("center_cell", Vector2i(-1, -1)),
+			}],
+		}
+	)
+	if not descriptor_result.is_success():
+		return {"success": false, "issues": descriptor_result.get_issues()}
+	return {"success": true, "descriptor": descriptor_result.descriptor, "issues": []}
+
+
+func _generate_four_region_regular_pois(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator,
+	attempt_index: int
+) -> Array[Dictionary]:
+	var core_template_ids: Dictionary = {}
+	for high_role: String in [
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_1,
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_2,
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+	]:
+		var high_slot: Dictionary = config.region_layout.get(high_role, {}) as Dictionary
+		var core_poi: Dictionary = high_slot.get("core_poi", {}) as Dictionary
+		core_template_ids[str(core_poi.get("template_id", ""))] = true
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var resolved_region: Dictionary = resolver.resolve_role(role)
+		if not bool(resolved_region.get("valid", false)):
+			return [resolved_region.get("issue", {}) as Dictionary]
+		var region_index: int = int(resolved_region.get("region_index", -1))
+		var section: Dictionary = resolver.get_section_for_role(role, "pois")
+		var target_count: int = maxi(int(section.get("target_count", 0)), 0)
+		var minimum_count: int = clampi(int(section.get("minimum_count", 0)), 0, target_count)
+		if target_count <= 0:
+			continue
+		var entries: Array[Dictionary] = resolver.get_weighted_entries(role, "pois")
+		var candidates: Array[Vector2i] = _collect_region_candidate_cells(
+			map_data,
+			resolver,
+			role,
+			false,
+			false
+		)
+		_shuffle_vector2i_array(candidates, rng)
+		var placed_count: int = 0
+		var candidate_cursor: int = 0
+		while placed_count < target_count and candidate_cursor < candidates.size():
+			var entry: Dictionary = resolver.pick_weighted_from_entries(entries, rng)
+			if entry.is_empty():
+				break
+			var template_id: String = str(entry.get("template_id", ""))
+			if core_template_ids.has(template_id):
+				candidate_cursor += 1
+				continue
+			var template: Dictionary = _find_template_by_id(config.poi_templates, template_id)
+			if template.is_empty():
+				candidate_cursor += 1
+				continue
+			var instance: Dictionary = _try_place_four_region_poi(
+				map_data,
+				config,
+				template,
+				role,
+				region_index,
+				PackedInt32Array(),
+				candidates[candidate_cursor],
+				false,
+				attempt_index,
+				placed_count,
+				rng,
+				resolver
+			)
+			candidate_cursor += 1
+			if instance.is_empty():
+				continue
+			placed_count += 1
+		if placed_count < minimum_count:
+			return [_four_region_issue(
+				"content_minimum_not_met",
+				"region_generation.content_profiles.pois",
+				role,
+				"普通 POI 数量低于 minimum_count：%d < %d" % [placed_count, minimum_count]
+			)]
+	return []
+
+
+func _generate_four_region_minerals(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	_clear_four_region_mineral_cells(map_data)
+	var mineral_sites: Array[Dictionary] = []
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var section: Dictionary = resolver.get_section_for_role(role, "minerals")
+		var target_count: int = maxi(int(section.get("target_count", 0)), 0)
+		var minimum_count: int = clampi(int(section.get("minimum_count", 0)), 0, target_count)
+		if target_count <= 0:
+			continue
+		var candidates: Array[Vector2i] = _collect_region_candidate_cells(
+			map_data,
+			resolver,
+			role,
+			true,
+			false
+		)
+		_shuffle_vector2i_array(candidates, rng)
+		var placed_count: int = 0
+		for candidate: Vector2i in candidates:
+			if placed_count >= target_count:
+				break
+			var entry: Dictionary = resolver.pick_weighted_entry(
+				role,
+				"minerals",
+				rng,
+				resolver.get_remaining_value_budget(role, "mineral_value_budget"),
+				"value_cost"
+			)
+			if entry.is_empty():
+				break
+			var template: Dictionary = _find_template_by_id(
+				config.mineral_cluster_types,
+				str(entry.get("cluster_type_id", ""))
+			)
+			if template.is_empty():
+				continue
+			var generated_cells: Array[Vector2i] = _grow_four_region_cluster(
+				map_data,
+				candidate,
+				config,
+				template,
+				rng,
+				resolver,
+				role
+			)
+			if generated_cells.is_empty():
+				continue
+			var value_cost: int = maxi(int(entry.get("value_cost", 1)), 1)
+			if not resolver.try_spend_value_budget(role, "mineral_value_budget", value_cost):
+				return [_four_region_issue(
+					"content_budget_exhausted",
+					"region_generation.content_profiles.mineral_value_budget",
+					role,
+					"矿簇生成后无法提交 mineral value budget"
+				)]
+			mineral_sites.append({
+				"site_id": "%s:mineral:%03d" % [role, placed_count],
+				"cluster_type_id": str(entry.get("cluster_type_id", "")),
+				"cell": candidate,
+				"cells": _vector2i_array_to_dict_array(generated_cells),
+				"value_cost": value_cost,
+			})
+			placed_count += 1
+		if placed_count < minimum_count:
+			return [_four_region_issue(
+				"content_minimum_not_met",
+				"region_generation.content_profiles.minerals",
+				role,
+				"矿簇数量低于 minimum_count：%d < %d" % [placed_count, minimum_count]
+			)]
+	map_data.mineral_sites = mineral_sites
+	return []
+
+
+func _grow_four_region_cluster(
+	map_data: WdcMapGenerationTypes.MapData,
+	seed_cell: Vector2i,
+	config: WdcMapGenerationTypes.MapConfig,
+	cluster_template: Dictionary,
+	rng: RandomNumberGenerator,
+	resolver: WdcRegionContentResolver,
+	role: String
+) -> Array[Vector2i]:
+	if not _is_valid_four_region_cluster_cell(
+		map_data,
+		seed_cell,
+		config,
+		cluster_template,
+		resolver,
+		role
+	):
+		return []
+	var min_size: int = maxi(int(cluster_template.get("min_cluster_size", 1)), 1)
+	var max_size: int = maxi(int(cluster_template.get("max_cluster_size", min_size)), min_size)
+	var target_size: int = rng.randi_range(min_size, max_size)
+	var generated: Array[Vector2i] = []
+	if not _place_cluster_cell(map_data, seed_cell, cluster_template):
+		return generated
+	generated.append(seed_cell)
+	while generated.size() < target_size:
+		var candidates_by_key: Dictionary = {}
+		for generated_cell: Vector2i in generated:
+			for direction: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var candidate: Vector2i = generated_cell + direction
+				if candidates_by_key.has(_key(candidate.x, candidate.y)):
+					continue
+				if not _is_valid_four_region_cluster_cell(
+					map_data,
+					candidate,
+					config,
+					cluster_template,
+					resolver,
+					role
+				):
+					continue
+				candidates_by_key[_key(candidate.x, candidate.y)] = candidate
+		if candidates_by_key.is_empty():
+			break
+		var candidates: Array[Vector2i] = []
+		for value: Variant in candidates_by_key.values():
+			if value is Vector2i:
+				candidates.append(value as Vector2i)
+		_shuffle_vector2i_array(candidates, rng)
+		var placed_this_round: bool = false
+		for candidate: Vector2i in candidates:
+			if generated.size() >= target_size:
+				break
+			if rng.randf() > clampf(float(cluster_template.get("spawn_probability", 1.0)), 0.0, 1.0):
+				continue
+			if _place_cluster_cell(map_data, candidate, cluster_template):
+				generated.append(candidate)
+				placed_this_round = true
+		if not placed_this_round:
+			break
+	return generated
+
+
+func _is_valid_four_region_cluster_cell(
+	map_data: WdcMapGenerationTypes.MapData,
+	cell_coord: Vector2i,
+	config: WdcMapGenerationTypes.MapConfig,
+	cluster_template: Dictionary,
+	resolver: WdcRegionContentResolver,
+	role: String
+) -> bool:
+	if not map_data.is_in_bounds(cell_coord.x, cell_coord.y):
+		return false
+	if not resolver.is_cell_in_role(cell_coord, role):
+		return false
+	return _is_valid_cluster_candidate(map_data, cell_coord, config, cluster_template)
+
+
+func _generate_four_region_room_contents(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var section: Dictionary = resolver.get_section_for_role(role, "room_contents")
+		var target_count: int = maxi(int(section.get("target_count", 0)), 0)
+		var minimum_count: int = clampi(int(section.get("minimum_count", 0)), 0, target_count)
+		if target_count <= 0:
+			continue
+		var room_candidates: Array[Dictionary] = _collect_room_content_candidates(
+			map_data,
+			resolver,
+			role
+		)
+		_shuffle_dictionary_array(room_candidates, rng)
+		var entries: Array[Dictionary] = resolver.get_weighted_entries(role, "room_contents")
+		var camp_section: Dictionary = resolver.get_section_for_role(role, "camps")
+		var camp_minimum_count: int = clampi(
+			int(camp_section.get("minimum_count", 0)),
+			0,
+			maxi(int(camp_section.get("target_count", 0)), 0)
+		)
+		var minimum_camp_plan_value_cost: int = _minimum_four_region_camp_plan_value_cost(
+			entries,
+			resolver.get_weighted_entries(role, "camps")
+		)
+		var planned_counts: Dictionary = {
+			"monster_sites": 0,
+			"nests": 0,
+			"camps": 0,
+		}
+		var placed_count: int = 0
+		for candidate: Dictionary in room_candidates:
+			if placed_count >= target_count:
+				break
+			var selection: Dictionary = _pick_four_region_room_content_selection(
+				role,
+				entries,
+				resolver,
+				resolver.get_remaining_value_budget(role, "reward_value_budget"),
+				planned_counts,
+				camp_minimum_count,
+				minimum_camp_plan_value_cost,
+				room_candidates.size() - placed_count - 1,
+				rng
+			)
+			if selection.is_empty():
+				break
+			var entry: Dictionary = selection.get("room_entry", {}) as Dictionary
+			var content_entry: Dictionary = selection.get("content_entry", {}) as Dictionary
+			var content_kind: String = str(entry.get("content_kind", ""))
+			var section_name: String = _room_content_section_name(content_kind)
+			var value_cost: int = int(selection.get("total_value_cost", 0))
+			var poi_instance_id: String = str(candidate.get("poi_instance_id", ""))
+			var room_index: int = int(candidate.get("room_index", -1))
+			var plan: Dictionary = {
+				"plan_id": "%s:room_content:%d" % [poi_instance_id, room_index],
+				"content_kind": content_kind,
+				"anchor_cell": candidate.get("cell", Vector2i.ZERO),
+				"room_kind": str(candidate.get("room_kind", "")),
+				"room_index": room_index,
+				"room_rect": candidate.get("room_rect", Rect2i()),
+				"poi_instance_id": poi_instance_id,
+				"region_index": int(candidate.get("region_index", -1)),
+				"region_role": role,
+				"room_content_value_cost": maxi(int(entry.get("value_cost", 1)), 1),
+				"reward_budget_cost": value_cost,
+			}
+			match section_name:
+				"monster_sites":
+					plan["template_id"] = str(content_entry.get("spawn_template_id", ""))
+				"nests":
+					plan["template_id"] = str(content_entry.get("nest_template_id", ""))
+				"camps":
+					var camp_id: String = str(content_entry.get("camp_id", ""))
+					plan["template_id"] = camp_id
+					plan["camp_id"] = camp_id
+					plan["content_value_cost"] = maxi(
+						int(content_entry.get("value_cost", 1)),
+						1
+					)
+			var poi_index: int = int(candidate.get("poi_index", -1))
+			if poi_index >= 0 and poi_index < map_data.poi_instances.size():
+				var poi_instance: Dictionary = map_data.poi_instances[poi_index]
+				var plans: Array = poi_instance.get("room_content_plans", []) as Array
+				plans.append(plan)
+				poi_instance["room_content_plans"] = plans
+				map_data.poi_instances[poi_index] = poi_instance
+			if not resolver.try_spend_value_budget(role, "reward_value_budget", value_cost):
+				return [_four_region_issue(
+					"content_budget_exhausted",
+					"region_generation.content_profiles.reward_value_budget",
+					role,
+					"房间内容生成后无法提交 reward value budget"
+				)]
+			planned_counts[section_name] = int(planned_counts.get(section_name, 0)) + 1
+			placed_count += 1
+		if placed_count < minimum_count:
+			return [_four_region_issue(
+				"content_minimum_not_met",
+				"region_generation.content_profiles.room_contents",
+				role,
+				"房间内容数量低于 minimum_count：%d < %d" % [placed_count, minimum_count]
+			)]
+	return []
+
+
+func _pick_four_region_room_content_selection(
+	role: String,
+	room_entries: Array[Dictionary],
+	resolver: WdcRegionContentResolver,
+	remaining_budget: int,
+	planned_counts: Dictionary,
+	camp_minimum_count: int,
+	minimum_camp_plan_value_cost: int,
+	remaining_room_slots_after_selection: int,
+	rng: RandomNumberGenerator
+) -> Dictionary:
+	var eligible_room_entries: Array[Dictionary] = []
+	for room_entry: Dictionary in room_entries:
+		var content_kind: String = str(room_entry.get("content_kind", ""))
+		var section_name: String = _room_content_section_name(content_kind)
+		if section_name.is_empty():
+			continue
+		var section: Dictionary = resolver.get_section_for_role(role, section_name)
+		var section_target: int = maxi(int(section.get("target_count", 0)), 0)
+		if int(planned_counts.get(section_name, 0)) >= section_target:
+			continue
+		var room_value_cost: int = maxi(int(room_entry.get("value_cost", 1)), 1)
+		var projected_camp_count: int = int(planned_counts.get("camps", 0))
+		if section_name == "camps":
+			projected_camp_count += 1
+		var remaining_camp_minimum: int = maxi(
+			camp_minimum_count - projected_camp_count,
+			0
+		)
+		if remaining_room_slots_after_selection < remaining_camp_minimum:
+			continue
+		if remaining_camp_minimum > 0 and minimum_camp_plan_value_cost <= 0:
+			continue
+		var reserved_camp_value: int = remaining_camp_minimum * minimum_camp_plan_value_cost
+		if room_value_cost + reserved_camp_value > remaining_budget:
+			continue
+		var content_entries: Array[Dictionary] = resolver.get_weighted_entries(role, section_name)
+		if section_name == "camps":
+			content_entries = resolver.filter_entries_by_value_budget(
+				role,
+				section_name,
+				remaining_budget - room_value_cost - reserved_camp_value,
+				"value_cost"
+			)
+		if content_entries.is_empty():
+			continue
+		eligible_room_entries.append(room_entry)
+	if eligible_room_entries.is_empty():
+		return {}
+	var room_entry: Dictionary = resolver.pick_weighted_from_entries(eligible_room_entries, rng)
+	var content_kind: String = str(room_entry.get("content_kind", ""))
+	var section_name: String = _room_content_section_name(content_kind)
+	var content_entries: Array[Dictionary] = resolver.get_weighted_entries(role, section_name)
+	var room_value_cost: int = maxi(int(room_entry.get("value_cost", 1)), 1)
+	if section_name == "camps":
+		var remaining_camp_minimum: int = maxi(
+			camp_minimum_count - int(planned_counts.get("camps", 0)) - 1,
+			0
+		)
+		content_entries = resolver.filter_entries_by_value_budget(
+			role,
+			section_name,
+			remaining_budget
+			- room_value_cost
+			- remaining_camp_minimum * minimum_camp_plan_value_cost,
+			"value_cost"
+		)
+	var content_entry: Dictionary = resolver.pick_weighted_from_entries(content_entries, rng)
+	if content_entry.is_empty():
+		return {}
+	var total_value_cost: int = room_value_cost
+	if section_name == "camps":
+		total_value_cost += maxi(int(content_entry.get("value_cost", 1)), 1)
+	return {
+		"room_entry": room_entry,
+		"content_entry": content_entry,
+		"total_value_cost": total_value_cost,
+	}
+
+
+func _room_content_section_name(content_kind: String) -> String:
+	match content_kind:
+		"monster_pack":
+			return "monster_sites"
+		"nest":
+			return "nests"
+		"camp":
+			return "camps"
+	return ""
+
+
+func _minimum_four_region_entry_value_cost(entries: Array[Dictionary]) -> int:
+	var minimum_cost: int = -1
+	for entry: Dictionary in entries:
+		var value_cost: int = maxi(int(entry.get("value_cost", 1)), 1)
+		if minimum_cost < 0 or value_cost < minimum_cost:
+			minimum_cost = value_cost
+	return minimum_cost
+
+
+func _minimum_four_region_camp_plan_value_cost(
+	room_entries: Array[Dictionary],
+	camp_entries: Array[Dictionary]
+) -> int:
+	var minimum_room_cost: int = -1
+	for room_entry: Dictionary in room_entries:
+		if str(room_entry.get("content_kind", "")) != "camp":
+			continue
+		var room_cost: int = maxi(int(room_entry.get("value_cost", 1)), 1)
+		if minimum_room_cost < 0 or room_cost < minimum_room_cost:
+			minimum_room_cost = room_cost
+	var minimum_camp_cost: int = _minimum_four_region_entry_value_cost(camp_entries)
+	if minimum_room_cost <= 0 or minimum_camp_cost <= 0:
+		return -1
+	return minimum_room_cost + minimum_camp_cost
+
+
+func _collect_room_content_candidates(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	role: String
+) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for poi_index: int in range(map_data.poi_instances.size()):
+		var instance: Dictionary = map_data.poi_instances[poi_index]
+		var instance_footprint: Array[Vector2i] = _cells_from_dictionary_array(
+			instance.get("footprint_cells", [])
+		)
+		var instance_region: Dictionary = resolver.resolve_footprint_for_role(
+			instance_footprint,
+			role
+		)
+		if not bool(instance_region.get("valid", false)):
+			continue
+		var main_room: Rect2i = _rect_from_dictionary(instance.get("main_room", {}))
+		var main_room_region: Dictionary = resolver.resolve_footprint_for_role(
+			_rect_cells(main_room),
+			role
+		)
+		if main_room.size != Vector2i.ZERO and bool(main_room_region.get("valid", false)):
+			result.append({
+				"poi_index": poi_index,
+				"poi_instance_id": str(instance.get("instance_id", "")),
+				"room_index": 0,
+				"room_kind": "main",
+				"cell": _rect_center_cell(main_room),
+				"room_rect": main_room,
+				"region_index": int(main_room_region.get("region_index", -1)),
+			})
+		var sub_rooms_value: Variant = instance.get("sub_rooms", [])
+		if sub_rooms_value is Array:
+			for sub_index: int in range((sub_rooms_value as Array).size()):
+				var sub_room: Rect2i = _rect_from_dictionary((sub_rooms_value as Array)[sub_index])
+				if sub_room.size == Vector2i.ZERO:
+					continue
+				var sub_room_region: Dictionary = resolver.resolve_footprint_for_role(
+					_rect_cells(sub_room),
+					role
+				)
+				if not bool(sub_room_region.get("valid", false)):
+					continue
+				result.append({
+					"poi_index": poi_index,
+					"poi_instance_id": str(instance.get("instance_id", "")),
+					"room_index": sub_index + 1,
+					"room_kind": "sub",
+					"cell": _rect_center_cell(sub_room),
+					"room_rect": sub_room,
+					"region_index": int(sub_room_region.get("region_index", -1)),
+				})
+	return result
+
+
+func _generate_four_region_traps(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	map_data.trap_sites.clear()
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var section: Dictionary = resolver.get_section_for_role(role, "traps")
+		var target_count: int = maxi(int(section.get("target_count", 0)), 0)
+		var minimum_count: int = clampi(int(section.get("minimum_count", 0)), 0, target_count)
+		if target_count <= 0:
+			continue
+		var placed_count: int = 0
+		var failed_rolls: int = 0
+		while placed_count < target_count and failed_rolls < target_count * 32 + 32:
+			var entry: Dictionary = resolver.pick_weighted_entry(role, "traps", rng)
+			if entry.is_empty():
+				break
+			var trap_kind: String = str(entry.get("trap_kind", ""))
+			var placement: Dictionary = _try_place_four_region_trap(
+				map_data,
+				resolver,
+				role,
+				trap_kind,
+				placed_count,
+				rng
+			)
+			if placement.is_empty():
+				failed_rolls += 1
+				continue
+			map_data.trap_sites.append(placement)
+			placed_count += 1
+		if placed_count < minimum_count:
+			return [_four_region_issue(
+				"content_minimum_not_met",
+				"region_generation.content_profiles.traps",
+				role,
+				"陷阱数量低于 minimum_count：%d < %d" % [placed_count, minimum_count]
+			)]
+	return []
+
+
+func _try_place_four_region_trap(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	role: String,
+	trap_kind: String,
+	ordinal: int,
+	rng: RandomNumberGenerator
+) -> Dictionary:
+	var require_wall: bool = trap_kind in ["arrow_slit", "explosive_ore_chain", "mimic_ore"]
+	var candidates: Array[Vector2i] = _collect_region_candidate_cells(
+		map_data,
+		resolver,
+		role,
+		require_wall,
+		false
+	)
+	_shuffle_vector2i_array(candidates, rng)
+	for candidate: Vector2i in candidates:
+		var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(candidate.x, candidate.y)
+		if (
+			cell == null
+			or cell.has_mineral
+			or cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE
+		):
+			continue
+		var site: Dictionary = {
+			"instance_id": "%s:trap:%s:%03d" % [role, trap_kind, ordinal],
+			"trap_kind": trap_kind,
+			"cell": _vector2i_to_dict(candidate),
+			"metadata": {},
+			"region_index": int(resolver.resolve_cell(candidate).get("region_index", -1)),
+			"region_role": role,
+		}
+		match trap_kind:
+			"spike":
+				if cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
+					continue
+				cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.SPIKE
+				site["cells"] = [_vector2i_to_dict(candidate)]
+			"pressure_plate":
+				if cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
+					continue
+				cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.PRESSURE_PLATE
+			"arrow_slit":
+				if cell.cell_type != WdcMapGenerationTypes.CellType.WALL:
+					continue
+				var facing: Vector2i = _resolve_arrow_slit_facing(map_data, candidate)
+				if facing == Vector2i.ZERO:
+					continue
+				cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.ARROW_SLIT
+				site["metadata"] = {"facing_x": facing.x, "facing_y": facing.y}
+			"explosive_ore_chain":
+				var chain: Array[Vector2i] = _try_grow_four_region_explosive_chain(
+					map_data,
+					candidate,
+					resolver,
+					role
+				)
+				if chain.is_empty():
+					continue
+				var nodes: Array[Dictionary] = []
+				for chain_cell: Vector2i in chain:
+					var chain_data: WdcMapGenerationTypes.CellData = map_data.get_cell(
+						chain_cell.x,
+						chain_cell.y
+					)
+					chain_data.special_block_type = WdcMapGenerationTypes.SpecialBlockType.EXPLOSIVE_ORE
+					chain_data.has_mineral = false
+					nodes.append(_vector2i_to_dict(chain_cell))
+				site["nodes"] = nodes
+			"mimic_ore":
+				if cell.cell_type != WdcMapGenerationTypes.CellType.WALL:
+					continue
+				cell.has_mineral = true
+				site["metadata"] = {"variant": "mimic_monster", "monster_id": "ghoul"}
+			_:
+				continue
+		var resolved_footprint: Dictionary = resolver.resolve_footprint_for_role(
+			_collect_trap_region_cells(site),
+			role
+		)
+		if not bool(resolved_footprint.get("valid", false)):
+			continue
+		site["region_index"] = int(resolved_footprint.get("region_index", -1))
+		site["region_role"] = str(resolved_footprint.get("role", ""))
+		return site
+	return {}
+
+
+func _try_grow_four_region_explosive_chain(
+	map_data: WdcMapGenerationTypes.MapData,
+	seed_cell: Vector2i,
+	resolver: WdcRegionContentResolver,
+	role: String
+) -> Array[Vector2i]:
+	for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
+		var chain: Array[Vector2i] = []
+		var valid: bool = true
+		for step: int in range(TRAP_EXPLOSIVE_ORE_CHAIN_LENGTH):
+			var candidate: Vector2i = seed_cell + direction * step
+			if (
+				not map_data.is_in_bounds(candidate.x, candidate.y)
+				or not resolver.is_cell_in_role(candidate, role)
+			):
+				valid = false
+				break
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(candidate.x, candidate.y)
+			if (
+				cell == null
+				or cell.cell_type != WdcMapGenerationTypes.CellType.WALL
+				or cell.has_mineral
+				or cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE
+				or cell.is_poi_protected
+			):
+				valid = false
+				break
+			chain.append(candidate)
+		if valid:
+			return chain
+	return []
+
+
+func _generate_four_region_population_sites(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	map_data.monster_sites.clear()
+	map_data.camp_encounters.clear()
+	var materialization_issues: Array[Dictionary] = _materialize_four_region_room_contents(
+		map_data,
+		config,
+		resolver
+	)
+	if not materialization_issues.is_empty():
+		return materialization_issues
+	var isolated_templates: Array[Dictionary] = _extract_dictionary_array(
+		config.get_meta("isolated_spawn_templates", [])
+	)
+	var nest_templates: Array[Dictionary] = _extract_dictionary_array(
+		config.get_meta("nest_templates", [])
+	)
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var resolved_region: Dictionary = resolver.resolve_role(role)
+		if not bool(resolved_region.get("valid", false)):
+			return [resolved_region.get("issue", {}) as Dictionary]
+		var monster_issue: Dictionary = _generate_four_region_monster_section(
+			map_data,
+			resolver,
+			rng,
+			role,
+			"monster_sites",
+			isolated_templates,
+			false
+		)
+		if not monster_issue.is_empty():
+			return [monster_issue]
+		var nest_issue: Dictionary = _generate_four_region_monster_section(
+			map_data,
+			resolver,
+			rng,
+			role,
+			"nests",
+			nest_templates,
+			true
+		)
+		if not nest_issue.is_empty():
+			return [nest_issue]
+		var camp_issue: Dictionary = _generate_four_region_camps(
+			map_data,
+			config,
+			resolver,
+			rng,
+			role
+		)
+		if not camp_issue.is_empty():
+			return [camp_issue]
+	return []
+
+
+func _materialize_four_region_room_contents(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver
+) -> Array[Dictionary]:
+	var materialized_plan_ids: Dictionary = {}
+	var isolated_templates: Array[Dictionary] = _extract_dictionary_array(
+		config.get_meta("isolated_spawn_templates", [])
+	)
+	var nest_templates: Array[Dictionary] = _extract_dictionary_array(
+		config.get_meta("nest_templates", [])
+	)
+	for poi_index: int in range(map_data.poi_instances.size()):
+		var poi_instance: Dictionary = map_data.poi_instances[poi_index]
+		var plans: Array = poi_instance.get("room_content_plans", []) as Array
+		for plan_index: int in range(plans.size()):
+			var plan_value: Variant = plans[plan_index]
+			if not (plan_value is Dictionary):
+				return [_four_region_issue(
+					"room_content_materialization_failed",
+					"poi_instances.room_content_plans[%d]" % plan_index,
+					str(poi_instance.get("region_role", "")),
+					"room content plan 必须是对象"
+				)]
+			var plan: Dictionary = plan_value as Dictionary
+			var plan_id: String = str(plan.get("plan_id", ""))
+			if plan_id.is_empty() or materialized_plan_ids.has(plan_id):
+				return [_four_region_issue(
+					"room_content_materialization_failed",
+					"poi_instances.room_content_plans.plan_id",
+					str(plan.get("region_role", "")),
+					"room content plan identity 不能为空且必须唯一"
+				)]
+			materialized_plan_ids[plan_id] = true
+			var anchor_cell: Vector2i = _cell_from_variant(plan.get("anchor_cell", null))
+			var room_rect: Rect2i = _rect_from_dictionary(plan.get("room_rect", {}))
+			var resolved_room: Dictionary = resolver.resolve_footprint(
+				_rect_cells(room_rect)
+			)
+			if not bool(resolved_room.get("valid", false)):
+				return [_four_region_issue(
+					"room_content_materialization_failed",
+					"poi_instances.room_content_plans.room_rect",
+					str(plan.get("region_role", "")),
+					"room content 必须通过 RegionPlan 解析到单一区域"
+				)]
+			var role: String = str(resolved_room.get("role", ""))
+			var region_index: int = int(resolved_room.get("region_index", -1))
+			if not resolver.is_cell_in_role(anchor_cell, role):
+				return [_four_region_issue(
+					"room_content_materialization_failed",
+					"poi_instances.room_content_plans.anchor_cell",
+					role,
+					"room content anchor 必须位于所属区域"
+				)]
+			plan["region_index"] = region_index
+			plan["region_role"] = role
+			var content_kind: String = str(plan.get("content_kind", ""))
+			var template_id: String = str(plan.get("template_id", ""))
+			match content_kind:
+				"monster_pack", "nest":
+					var is_nest: bool = content_kind == "nest"
+					var templates: Array[Dictionary] = nest_templates if is_nest else isolated_templates
+					var template: Dictionary = _find_template_by_id(templates, template_id)
+					if template.is_empty():
+						return [_four_region_issue(
+							"room_content_materialization_failed",
+							"poi_instances.room_content_plans.template_id",
+							role,
+							"room content 引用的怪物模板不存在：%s" % template_id
+						)]
+					var site: Dictionary = {
+						"site_id": plan_id,
+						"site_kind": "nest" if is_nest else "isolated",
+						"cell": anchor_cell,
+						"template_id": template_id,
+						"monster_id": str(template.get("monster_id", "")),
+						"room_kind": str(plan.get("room_kind", "")),
+						"region_index": region_index,
+						"region_role": role,
+						"site_source": "poi_room",
+						"source_room_content_plan_id": plan_id,
+						"source_poi_instance_id": str(plan.get("poi_instance_id", "")),
+					}
+					if is_nest:
+						for field_name: String in [
+							"nest_unit_id",
+							"loot_table_id",
+							"activation_radius_m",
+							"spawn_interval_sec",
+							"max_alive_children",
+							"max_hit_points",
+						]:
+							site[field_name] = template.get(field_name)
+					map_data.monster_sites.append(site)
+					plan["materialized_site_id"] = plan_id
+				"camp":
+					var camp_id: String = str(plan.get("camp_id", template_id))
+					var definition: Dictionary = _find_camp_definition(config, camp_id)
+					if definition.is_empty():
+						return [_four_region_issue(
+							"room_content_materialization_failed",
+							"poi_instances.room_content_plans.camp_id",
+							role,
+							"room content 引用的营地定义不存在：%s" % camp_id
+						)]
+					var camp_plan: Dictionary = {
+						"encounter_id": "%s:camp" % plan_id,
+						"room_rect": room_rect,
+						"anchor_cell": anchor_cell,
+						"room_index": int(plan.get("room_index", -1)),
+						"room_kind": str(plan.get("room_kind", "")),
+						"layer_id": "",
+					}
+					var camp_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+					camp_rng.seed = maxi(abs(plan_id.hash()), 1)
+					_apply_locked_treasure_camp_plan(
+						camp_plan,
+						room_rect,
+						[],
+						{},
+						definition,
+						config,
+						camp_rng
+					)
+					if bool(camp_plan.get("invalid", false)):
+						return [_four_region_issue(
+							"room_content_materialization_failed",
+							"poi_instances.room_content_plans",
+							role,
+							"room content 营地无法在目标房间内生成"
+						)]
+					_append_camp_encounter(
+						map_data,
+						camp_plan,
+						str(poi_instance.get("template_id", ""))
+					)
+					var camp: Dictionary = map_data.camp_encounters.back()
+					var camp_region: Dictionary = resolver.resolve_footprint_for_role(
+						_collect_camp_region_cells(camp),
+						role
+					)
+					if not bool(camp_region.get("valid", false)):
+						map_data.camp_encounters.pop_back()
+						return [_four_region_issue(
+							"room_content_materialization_failed",
+							"poi_instances.room_content_plans.camp",
+							role,
+							"room content 营地 footprint 不得跨区"
+						)]
+					camp.erase("layer_id")
+					camp["region_index"] = region_index
+					camp["region_role"] = role
+					camp["camp_id"] = camp_id
+					camp["reward_budget_cost"] = maxi(
+						int(plan.get("content_value_cost", 1)),
+						1
+					)
+					camp["source_room_content_plan_id"] = plan_id
+					camp["source_room_key"] = _four_region_room_key(
+						str(plan.get("poi_instance_id", "")),
+						int(plan.get("room_index", -1))
+					)
+					map_data.camp_encounters[map_data.camp_encounters.size() - 1] = camp
+					plan["materialized_encounter_id"] = str(camp.get("encounter_id", ""))
+				_:
+					return [_four_region_issue(
+						"room_content_materialization_failed",
+						"poi_instances.room_content_plans.content_kind",
+						role,
+						"不支持的 room content kind：%s" % content_kind
+					)]
+			plans[plan_index] = plan
+		poi_instance["room_content_plans"] = plans
+		map_data.poi_instances[poi_index] = poi_instance
+	return []
+
+
+func _generate_four_region_monster_section(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator,
+	role: String,
+	section_name: String,
+	templates: Array[Dictionary],
+	is_nest: bool
+) -> Dictionary:
+	var section: Dictionary = resolver.get_section_for_role(role, section_name)
+	var target_count: int = maxi(int(section.get("target_count", 0)), 0)
+	var minimum_count: int = clampi(int(section.get("minimum_count", 0)), 0, target_count)
+	if target_count <= 0:
+		return {}
+	var entries: Array[Dictionary] = resolver.get_weighted_entries(role, section_name)
+	var candidates: Array[Vector2i] = _collect_region_candidate_cells(
+		map_data,
+		resolver,
+		role,
+		false,
+		true
+	)
+	_shuffle_vector2i_array(candidates, rng)
+	var expected_site_kind: String = "nest" if is_nest else "isolated"
+	var occupied_cells: Dictionary = {}
+	var placed_count: int = 0
+	for existing_site: Dictionary in map_data.monster_sites:
+		var existing_cell: Vector2i = _site_cell(existing_site)
+		occupied_cells[_key(existing_cell.x, existing_cell.y)] = true
+		if (
+			resolver.is_cell_in_role(existing_cell, role)
+			and str(existing_site.get("site_kind", "")) == expected_site_kind
+		):
+			placed_count += 1
+	for candidate: Vector2i in candidates:
+		if placed_count >= target_count:
+			break
+		if occupied_cells.has(_key(candidate.x, candidate.y)):
+			continue
+		var entry: Dictionary = resolver.pick_weighted_from_entries(entries, rng)
+		if entry.is_empty():
+			break
+		var id_key: String = "nest_template_id" if is_nest else "spawn_template_id"
+		var template_id: String = str(entry.get(id_key, ""))
+		var template: Dictionary = _find_template_by_id(templates, template_id)
+		if template.is_empty():
+			continue
+		var resolved_site: Dictionary = resolver.resolve_cell(candidate)
+		if not bool(resolved_site.get("valid", false)):
+			continue
+		var site: Dictionary = {
+			"site_kind": "nest" if is_nest else "isolated",
+			"cell": candidate,
+			"template_id": template_id,
+			"monster_id": str(template.get("monster_id", "")),
+			"region_index": int(resolved_site.get("region_index", -1)),
+			"region_role": str(resolved_site.get("role", "")),
+			"site_source": "ambient",
+			"population_domain": "poi_nest" if is_nest else "ordinary",
+		}
+		if is_nest:
+			for field_name: String in [
+				"nest_unit_id",
+				"loot_table_id",
+				"activation_radius_m",
+				"spawn_interval_sec",
+				"max_alive_children",
+				"max_hit_points",
+			]:
+				site[field_name] = template.get(field_name)
+		map_data.monster_sites.append(site)
+		occupied_cells[_key(candidate.x, candidate.y)] = true
+		placed_count += 1
+	if placed_count < minimum_count:
+		return _four_region_issue(
+			"content_minimum_not_met",
+			"region_generation.content_profiles.%s" % section_name,
+			role,
+			"%s 数量低于 minimum_count：%d < %d" % [section_name, placed_count, minimum_count]
+		)
+	return {}
+
+
+func _generate_four_region_camps(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver,
+	rng: RandomNumberGenerator,
+	role: String
+) -> Dictionary:
+	var section: Dictionary = resolver.get_section_for_role(role, "camps")
+	var target_count: int = maxi(int(section.get("target_count", 0)), 0)
+	var minimum_count: int = clampi(int(section.get("minimum_count", 0)), 0, target_count)
+	if target_count <= 0:
+		return {}
+	var remaining_budget: int = resolver.get_remaining_value_budget(role, "reward_value_budget")
+	var candidates: Array[Dictionary] = _collect_room_content_candidates(map_data, resolver, role)
+	_shuffle_dictionary_array(candidates, rng)
+	var reserved_room_keys: Dictionary = _collect_four_region_reserved_room_keys(
+		map_data,
+		resolver,
+		role
+	)
+	var placed_count: int = 0
+	for existing_camp: Dictionary in map_data.camp_encounters:
+		if resolver.is_cell_in_role(
+			_cell_from_variant(existing_camp.get("chest_cell", null)),
+			role
+		):
+			placed_count += 1
+	for candidate: Dictionary in candidates:
+		if placed_count >= target_count:
+			break
+		var room_key: String = _four_region_room_key(
+			str(candidate.get("poi_instance_id", "")),
+			int(candidate.get("room_index", -1))
+		)
+		if reserved_room_keys.has(room_key):
+			continue
+		var entry: Dictionary = resolver.pick_weighted_entry(
+			role,
+			"camps",
+			rng,
+			remaining_budget,
+			"value_cost"
+		)
+		if entry.is_empty():
+			break
+		var camp_id: String = str(entry.get("camp_id", ""))
+		var definition: Dictionary = _find_camp_definition(config, camp_id)
+		if definition.is_empty():
+			continue
+		var plan: Dictionary = {
+			"encounter_id": "%s:camp:%03d" % [role, placed_count],
+			"room_rect": candidate.get("room_rect", Rect2i()),
+			"anchor_cell": candidate.get("cell", Vector2i.ZERO),
+			"room_index": int(candidate.get("room_index", -1)),
+			"room_kind": str(candidate.get("room_kind", "")),
+			"layer_id": "",
+		}
+		_apply_locked_treasure_camp_plan(
+			plan,
+			candidate.get("room_rect", Rect2i()),
+			[],
+			{},
+			definition,
+			config,
+			rng
+		)
+		if bool(plan.get("invalid", false)):
+			continue
+		_append_camp_encounter(
+			map_data,
+			plan,
+			str((map_data.poi_instances[int(candidate.get("poi_index", -1))] as Dictionary).get("template_id", ""))
+		)
+		var camp: Dictionary = map_data.camp_encounters.back()
+		var resolved_camp: Dictionary = resolver.resolve_footprint_for_role(
+			_collect_camp_region_cells(camp),
+			role
+		)
+		if not bool(resolved_camp.get("valid", false)):
+			map_data.camp_encounters.pop_back()
+			continue
+		camp.erase("layer_id")
+		camp["region_index"] = int(resolved_camp.get("region_index", -1))
+		camp["region_role"] = str(resolved_camp.get("role", ""))
+		camp["camp_id"] = camp_id
+		camp["reward_budget_cost"] = maxi(int(entry.get("value_cost", 1)), 1)
+		camp["source_room_key"] = room_key
+		map_data.camp_encounters[map_data.camp_encounters.size() - 1] = camp
+		var value_cost: int = maxi(int(entry.get("value_cost", 1)), 1)
+		if not resolver.try_spend_value_budget(role, "reward_value_budget", value_cost):
+			map_data.camp_encounters.pop_back()
+			return _four_region_issue(
+				"content_budget_exhausted",
+				"region_generation.content_profiles.reward_value_budget",
+				role,
+				"营地生成后无法提交 reward value budget"
+			)
+		remaining_budget = resolver.get_remaining_value_budget(role, "reward_value_budget")
+		reserved_room_keys[room_key] = true
+		placed_count += 1
+	if placed_count < minimum_count:
+		return _four_region_issue(
+			"content_minimum_not_met",
+			"region_generation.content_profiles.camps",
+			role,
+			"营地数量低于 minimum_count：%d < %d" % [placed_count, minimum_count]
+		)
+	return {}
+
+
+func _collect_four_region_reserved_room_keys(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	role: String
+) -> Dictionary:
+	var reserved: Dictionary = {}
+	for instance: Dictionary in map_data.poi_instances:
+		var footprint: Array[Vector2i] = _cells_from_dictionary_array(
+			instance.get("footprint_cells", [])
+		)
+		if not bool(resolver.resolve_footprint_for_role(footprint, role).get("valid", false)):
+			continue
+		var instance_id: String = str(instance.get("instance_id", ""))
+		for plan_value: Variant in instance.get("room_content_plans", []) as Array:
+			if not (plan_value is Dictionary):
+				continue
+			var plan: Dictionary = plan_value as Dictionary
+			reserved[_four_region_room_key(
+				instance_id,
+				int(plan.get("room_index", -1))
+			)] = true
+	for camp: Dictionary in map_data.camp_encounters:
+		if not resolver.is_cell_in_role(
+			_cell_from_variant(camp.get("chest_cell", null)),
+			role
+		):
+			continue
+		var source_room_key: String = str(camp.get("source_room_key", ""))
+		if not source_room_key.is_empty():
+			reserved[source_room_key] = true
+	return reserved
+
+
+func _four_region_room_key(poi_instance_id: String, room_index: int) -> String:
+	return "%s:r%d" % [poi_instance_id, room_index]
+
+
+func _find_camp_definition(
+	config: WdcMapGenerationTypes.MapConfig,
+	camp_id: String
+) -> Dictionary:
+	for template: Dictionary in config.poi_templates:
+		var content: Dictionary = template.get("content", {}) as Dictionary
+		for room_key: String in ["main_room_roll", "sub_room_roll"]:
+			var room_roll: Dictionary = content.get(room_key, {}) as Dictionary
+			var entries_value: Variant = room_roll.get("camp_entries", [])
+			if not (entries_value is Array):
+				continue
+			for entry_value: Variant in entries_value as Array:
+				if entry_value is Dictionary and str((entry_value as Dictionary).get("id", "")) == camp_id:
+					return (entry_value as Dictionary).duplicate(true)
+	return {}
+
+
+func _apply_four_region_durability(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver
+) -> void:
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			if cell == null or cell.cell_type != WdcMapGenerationTypes.CellType.WALL:
+				if cell != null:
+					cell.durability_override_max_hit_points = 0
+					WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+				continue
+			var wall_kind: String = "ordinary"
+			if cell.special_block_type == WdcMapGenerationTypes.SpecialBlockType.POI_WALL:
+				wall_kind = "poi"
+			elif cell.has_mineral or cell.special_block_type in [
+				WdcMapGenerationTypes.SpecialBlockType.RARE_MINERAL,
+				WdcMapGenerationTypes.SpecialBlockType.TURQUOISE,
+				WdcMapGenerationTypes.SpecialBlockType.AMETHYST,
+				WdcMapGenerationTypes.SpecialBlockType.GOLD,
+			]:
+				wall_kind = "mineral"
+			cell.durability_override_max_hit_points = resolver.get_wall_hit_points(
+				Vector2i(x, y),
+				wall_kind
+			)
+			WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+
+
+func _generate_four_region_spawn_and_extraction(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	resolver: WdcRegionContentResolver,
+	resolved_seed: int,
+	attempt_index: int
+) -> Array[Dictionary]:
+	map_data.player_spawn_points.clear()
+	map_data.extraction_sites.clear()
+	var spawn_selection: Dictionary = _select_four_region_site_cell(
+		map_data,
+		resolver,
+		config.player_spawn_edge_margin_cells,
+		config.player_spawn_clearance_radius_cells,
+		config.player_spawn_min_clearance_ratio,
+		[],
+		0.0,
+		"player_spawn",
+		resolved_seed,
+		attempt_index
+	)
+	if not bool(spawn_selection.get("success", false)):
+		return [_four_region_issue(
+			"spawn_placement_failed",
+			"map.player_spawn",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"无法在常规区域生成唯一出生锚点"
+		)]
+	var spawn_cell: Vector2i = spawn_selection.get("cell", Vector2i(-1, -1))
+	map_data.player_spawn_points.append({
+		"x": spawn_cell.x,
+		"y": spawn_cell.y,
+		"site_kind": "player_spawn",
+		"region_index": 0,
+		"region_role": WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+		"fallback_reason": str(spawn_selection.get("fallback_reason", "")),
+	})
+	var extraction_selection: Dictionary = _select_four_region_site_cell(
+		map_data,
+		resolver,
+		config.extraction_site_edge_margin_cells,
+		config.extraction_site_clearance_radius_cells,
+		config.extraction_site_min_clearance_ratio,
+		[spawn_cell],
+		config.extraction_site_min_distance_from_player_spawns_cells,
+		"extraction",
+		resolved_seed,
+		attempt_index
+	)
+	if not bool(extraction_selection.get("success", false)):
+		return [_four_region_issue(
+			"extraction_placement_failed",
+			"map.extraction_sites",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"无法在常规区域生成唯一普通撤离点"
+		)]
+	var extraction_cell: Vector2i = extraction_selection.get("cell", Vector2i(-1, -1))
+	map_data.extraction_sites.append({
+		"x": extraction_cell.x,
+		"y": extraction_cell.y,
+		"site_kind": "extraction",
+		"extraction_kind": "normal",
+		"region_index": 0,
+		"region_role": WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+		"fallback_reason": str(extraction_selection.get("fallback_reason", "")),
+	})
+	return []
+
+
+func _select_four_region_site_cell(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	edge_margin: int,
+	clearance_radius: int,
+	minimum_clearance_ratio: float,
+	avoid_cells: Array[Vector2i],
+	minimum_avoid_distance: float,
+	site_kind: String,
+	resolved_seed: int,
+	attempt_index: int
+) -> Dictionary:
+	var regular_resolution: Dictionary = resolver.resolve_role(
+		WdcMapGenerationTypes.REGION_ROLE_REGULAR
+	)
+	if not bool(regular_resolution.get("valid", false)):
+		return {
+			"success": false,
+			"cell": Vector2i(-1, -1),
+			"fallback_reason": "",
+		}
+	var candidates: Array[Dictionary] = []
+	var margin: int = maxi(edge_margin, 0)
+	var avoid_distance_sq: float = minimum_avoid_distance * minimum_avoid_distance
+	for y: int in range(margin, map_data.height - margin):
+		for x: int in range(margin, map_data.width - margin):
+			var cell_coord: Vector2i = Vector2i(x, y)
+			if not resolver.is_cell_in_role(
+				cell_coord,
+				WdcMapGenerationTypes.REGION_ROLE_REGULAR
+			):
+				continue
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			if (
+				cell == null
+				or cell.has_mineral
+				or cell.is_poi_protected
+				or cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE
+			):
+				continue
+			var avoid_ok: bool = true
+			for avoid_cell: Vector2i in avoid_cells:
+				if cell_coord.distance_squared_to(avoid_cell) < avoid_distance_sq:
+					avoid_ok = false
+					break
+			var clearance_ratio: float = _compute_site_clearance_ratio(
+				map_data,
+				cell_coord,
+				clearance_radius
+			)
+			candidates.append({
+				"cell": cell_coord,
+				"is_floor": _is_site_floor_cell(cell),
+				"clearance_ratio": clearance_ratio,
+				"clearance_ok": clearance_ratio >= minimum_clearance_ratio,
+				"avoid_ok": avoid_ok,
+				"tie": _stable_four_region_site_tie_breaker(
+					cell_coord,
+					site_kind,
+					resolved_seed,
+					attempt_index
+				),
+			})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var clearance_a: float = float(a.get("clearance_ratio", 0.0))
+		var clearance_b: float = float(b.get("clearance_ratio", 0.0))
+		if absf(clearance_a - clearance_b) > 0.0001:
+			return clearance_a > clearance_b
+		return int(a.get("tie", 0)) < int(b.get("tie", 0))
+	)
+	var passes: Array[Dictionary] = [
+		{
+			"floor": true,
+			"clearance": true,
+			"carve": false,
+			"fallback_reason": "",
+		},
+		{
+			"floor": true,
+			"clearance": false,
+			"carve": false,
+			"fallback_reason": "relaxed_clearance",
+		},
+		{
+			"floor": false,
+			"clearance": false,
+			"carve": true,
+			"fallback_reason": "carved_regular_cell",
+		},
+	]
+	for pass_config: Dictionary in passes:
+		for candidate: Dictionary in candidates:
+			if bool(pass_config.get("floor", false)) and not bool(candidate.get("is_floor", false)):
+				continue
+			if bool(pass_config.get("clearance", false)) and not bool(candidate.get("clearance_ok", false)):
+				continue
+			if not bool(candidate.get("avoid_ok", false)):
+				continue
+			var candidate_cell: Vector2i = candidate.get("cell", Vector2i(-1, -1))
+			if bool(pass_config.get("carve", false)):
+				_carve_site_floor_cell(map_data, candidate_cell)
+			return {
+				"success": true,
+				"cell": candidate_cell,
+				"fallback_reason": str(pass_config.get("fallback_reason", "")),
+			}
+	return {
+		"success": false,
+		"cell": Vector2i(-1, -1),
+		"fallback_reason": "",
+	}
+
+
+func _validate_four_region_artifact(
+	map_data: WdcMapGenerationTypes.MapData
+) -> Array[Dictionary]:
+	var issues: Array[Dictionary] = WdcMapGenerationTypes.validate_map_data_layout_artifacts(
+		map_data
+	)
+	if not issues.is_empty():
+		return issues
+	var plan: WdcMapGenerationTypes.RegionPlan = map_data.region_plan
+	var membership: PackedInt32Array = plan.get_region_index_by_cell_copy()
+	var validator: WdcFourRegionLayoutValidator = WdcFourRegionLayoutValidator.new()
+	issues.append_array(validator.validate(Vector2i(map_data.width, map_data.height), membership))
+	if not issues.is_empty():
+		return issues
+	var core_instances_by_role: Dictionary = {}
+	for role: String in [
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_1,
+		WdcMapGenerationTypes.REGION_ROLE_HIGH_2,
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+	]:
+		var region = plan.try_get_by_role(role)
+		var matching_core_count: int = 0
+		var identity_match_count: int = 0
+		for instance: Dictionary in map_data.poi_instances:
+			if str(instance.get("instance_id", "")) == region.core_poi_instance_id:
+				identity_match_count += 1
+				if (
+					not bool(instance.get("is_core", false))
+					or str(instance.get("region_role", "")) != role
+				):
+					issues.append(_four_region_issue(
+						"core_poi_identity_mismatch",
+						"poi_instances",
+						role,
+						"RegionPlan core identity 必须解析到所属区域的核心 POI"
+					))
+			if not bool(instance.get("is_core", false)):
+				continue
+			if str(instance.get("region_role", "")) != role:
+				continue
+			matching_core_count += 1
+			if str(instance.get("instance_id", "")) != region.core_poi_instance_id:
+				issues.append(_four_region_issue(
+					"core_poi_identity_mismatch",
+					"poi_instances",
+					role,
+					"核心 POI instance identity 与 RegionPlan 不一致"
+				))
+			else:
+				core_instances_by_role[role] = instance
+			if (
+				str(instance.get("template_id", "")) != region.core_poi_template_id
+				or int(instance.get("region_index", -1)) != region.index
+			):
+				issues.append(_four_region_issue(
+					"core_poi_identity_mismatch",
+					"poi_instances",
+					role,
+					"核心 POI 模板或区域索引与 RegionPlan 不一致"
+				))
+			var canonical_center: Vector2i = instance.get("canonical_center", region.center_cell)
+			var actual_center: Vector2i = instance.get("center_cell", Vector2i(-1, -1))
+			var main_room_center: Vector2i = instance.get(
+				"main_room_center",
+				Vector2i(-1, -1)
+			)
+			var computed_main_room_center: Vector2i = _rect_center_cell(
+				_rect_from_dictionary(instance.get("main_room", {}))
+			)
+			if (
+				actual_center != region.core_anchor_cell
+				or main_room_center != region.core_anchor_cell
+				or computed_main_room_center != region.core_anchor_cell
+			):
+				issues.append(_four_region_issue(
+					"core_poi_identity_mismatch",
+					"poi_instances.center_cell",
+					role,
+					"核心 POI anchor 与 RegionPlan core_anchor_cell 不一致"
+				))
+			var max_offset: int = maxi(int(instance.get("max_center_offset_cells", 0)), 0)
+			if actual_center.distance_to(canonical_center) > float(max_offset):
+				issues.append(_four_region_issue(
+					"core_poi_center_offset_exceeded",
+					"poi_instances.center_cell",
+					role,
+					"核心 POI 主房中心超过配置的 canonical center 偏移"
+				))
+			var footprint: Array[Vector2i] = _cells_from_dictionary_array(
+				instance.get("footprint_cells", [])
+			)
+			if not _footprint_belongs_to_region(
+				footprint,
+				membership,
+				Vector2i(map_data.width, map_data.height),
+				region.index
+			):
+				issues.append(_four_region_issue(
+					"core_poi_footprint_crosses_region",
+					"poi_instances.footprint_cells",
+					role,
+					"核心 POI 完整 footprint 必须位于目标区域"
+				))
+		if matching_core_count != 1:
+			issues.append(_four_region_issue(
+				"core_poi_count_mismatch",
+				"poi_instances",
+				role,
+				"每个高风险区域必须恰好有一个核心 POI"
+			))
+		if identity_match_count != 1:
+			issues.append(_four_region_issue(
+				"core_poi_identity_mismatch",
+				"poi_instances",
+				role,
+				"RegionPlan core identity 必须解析到恰好一个实际 POI instance"
+			))
+		if not _has_unprotected_regular_access_boundary(map_data, membership, region.index):
+			issues.append(_four_region_issue(
+				"missing_regular_access_boundary",
+				"region_index_by_cell",
+				role,
+				"高风险区域与常规区域之间缺少未被永久保护结构封死的边界"
+			))
+	if map_data.player_spawn_points.size() != 1:
+		issues.append(_four_region_issue(
+			"spawn_placement_failed",
+			"player_spawn_points",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"四区域地图必须恰好包含一个出生锚点"
+		))
+	if map_data.extraction_sites.size() != 1:
+		issues.append(_four_region_issue(
+			"extraction_placement_failed",
+			"extraction_sites",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"四区域地图必须恰好包含一个普通撤离点"
+		))
+	for site: Dictionary in map_data.player_spawn_points + map_data.extraction_sites:
+		var site_cell: Vector2i = _site_cell(site)
+		var site_region = plan.try_get_at(site_cell)
+		if (
+			site_region == null
+			or site_region.role != WdcMapGenerationTypes.REGION_ROLE_REGULAR
+			or int(site.get("region_index", -1)) != site_region.index
+			or str(site.get("region_role", "")) != site_region.role
+		):
+			issues.append(_four_region_issue(
+				"site_region_mismatch",
+				"spawn_or_extraction",
+				WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+				"出生与撤离必须位于常规区域"
+			))
+	for extraction_site: Dictionary in map_data.extraction_sites:
+		if _is_special_four_region_extraction_site(extraction_site):
+			issues.append(_four_region_issue(
+				"special_extraction_not_allowed",
+				"extraction_sites",
+				WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+				"四区域地图不得生成 BOSS、宝库或 guaranteed 特殊撤离"
+			))
+	issues.append_array(_validate_four_region_derived_sites(map_data, plan))
+	issues.append_array(_validate_four_region_mineral_sites(map_data, plan))
+	if map_data.region_boss_encounter != null:
+		var anchors = map_data.region_boss_encounter.get_anchor_snapshots()
+		var boss_region = plan.try_get_by_role(WdcMapGenerationTypes.REGION_ROLE_BOSS)
+		var boss_instance: Dictionary = core_instances_by_role.get(
+			WdcMapGenerationTypes.REGION_ROLE_BOSS,
+			{}
+		) as Dictionary
+		var primary_matches: bool = (
+			anchors.size() == 1
+			and anchors[0].id == "primary"
+			and not boss_instance.is_empty()
+			and anchors[0].cell == boss_instance.get("main_room_center", Vector2i(-1, -1))
+		)
+		if (
+			boss_region == null
+			or map_data.region_boss_encounter.get_region_id() != boss_region.id
+			or map_data.region_boss_encounter.get_core_poi_instance_id()
+			!= boss_region.core_poi_instance_id
+			or not primary_matches
+		):
+			issues.append(_four_region_issue(
+				"boss_encounter_mismatch",
+				"region_boss_encounter.anchors",
+				WdcMapGenerationTypes.REGION_ROLE_BOSS,
+				"BOSS descriptor 必须匹配核心 POI，并只包含主房中心 primary anchor"
+			))
+	issues.append_array(_validate_four_region_reward_metadata(map_data, plan))
+	if (
+		map_data.player_spawn_points.size() == 1
+		and map_data.extraction_sites.size() == 1
+		and not _has_regular_only_route(
+			map_data,
+			membership,
+			_site_cell(map_data.player_spawn_points[0]),
+			_site_cell(map_data.extraction_sites[0])
+		)
+	):
+		issues.append(_four_region_issue(
+			"regular_route_missing",
+			"player_spawn_points",
+			WdcMapGenerationTypes.REGION_ROLE_REGULAR,
+			"唯一出生到唯一撤离缺少 regular-only 开放或标准可挖路线"
+		))
+	return issues
+
+
+func _validate_four_region_derived_sites(
+	map_data: WdcMapGenerationTypes.MapData,
+	plan: WdcMapGenerationTypes.RegionPlan
+) -> Array[Dictionary]:
+	var issues: Array[Dictionary] = []
+	var collections: Array = [
+		map_data.poi_instances,
+		map_data.monster_sites,
+		map_data.trap_sites,
+		map_data.camp_encounters,
+	]
+	for collection: Array in collections:
+		for item_value: Variant in collection:
+			if not (item_value is Dictionary):
+				continue
+			var item: Dictionary = item_value as Dictionary
+			var cell: Vector2i = _site_cell(item)
+			if item.has("center_cell"):
+				cell = _cell_from_variant(item.get("center_cell"))
+			elif item.has("chest_cell"):
+				cell = _cell_from_variant(item.get("chest_cell"))
+			var region = plan.try_get_at(cell)
+			var footprint: Array = _derived_site_region_cells(item)
+			var footprint_matches: bool = region != null and not footprint.is_empty()
+			if footprint_matches:
+				for footprint_cell_value: Variant in footprint:
+					if not (footprint_cell_value is Vector2i):
+						footprint_matches = false
+						break
+					var footprint_cell: Vector2i = footprint_cell_value as Vector2i
+					var footprint_region = plan.try_get_at(footprint_cell)
+					if footprint_region == null or footprint_region.index != region.index:
+						footprint_matches = false
+						break
+			if (
+				region == null
+				or int(item.get("region_index", -1)) != region.index
+				or str(item.get("region_role", "")) != region.role
+				or not footprint_matches
+			):
+				issues.append(_four_region_issue(
+					"site_region_mismatch",
+					"generated_sites.region_identity",
+					str(item.get("region_role", "")),
+					"派生站点 role/index 与完整 footprint 必须和 RegionPlan 查询一致"
+				))
+	return issues
+
+
+func _validate_four_region_mineral_sites(
+	map_data: WdcMapGenerationTypes.MapData,
+	plan: WdcMapGenerationTypes.RegionPlan
+) -> Array[Dictionary]:
+	var issues: Array[Dictionary] = []
+	for site: Dictionary in map_data.mineral_sites:
+		if site.has("region_index") or site.has("region_role"):
+			issues.append(_four_region_issue(
+				"mineral_region_cache_not_allowed",
+				"mineral_sites",
+				"",
+				"矿物站点不得保存派生 region_index 或 region_role"
+			))
+			continue
+		var anchor_cell: Vector2i = _site_cell(site)
+		var anchor_region = plan.try_get_at(anchor_cell)
+		var mineral_cells: Array[Vector2i] = _cells_from_dictionary_array(
+			site.get("cells", [])
+		)
+		if mineral_cells.is_empty():
+			mineral_cells.append(anchor_cell)
+		var footprint_matches: bool = anchor_region != null
+		if footprint_matches:
+			for mineral_cell: Vector2i in mineral_cells:
+				var mineral_region = plan.try_get_at(mineral_cell)
+				if mineral_region == null or mineral_region.index != anchor_region.index:
+					footprint_matches = false
+					break
+		if not footprint_matches:
+			issues.append(_four_region_issue(
+				"mineral_site_region_mismatch",
+				"mineral_sites.cells",
+				"",
+				"矿物站点 anchor 与完整矿簇必须由 RegionPlan 解析到同一区域"
+			))
+	return issues
+
+
+func _derived_site_region_cells(item: Dictionary) -> Array[Vector2i]:
+	if item.has("footprint_cells"):
+		return _cells_from_dictionary_array(item.get("footprint_cells", []))
+	if item.has("chest_cell"):
+		return _collect_camp_region_cells(item)
+	if item.has("nodes") or item.has("cells"):
+		return _collect_trap_region_cells(item)
+	var cell: Vector2i = _site_cell(item)
+	var cells: Array[Vector2i] = []
+	if cell != Vector2i(-1, -1):
+		cells.append(cell)
+	return cells
+
+
+func _validate_four_region_reward_metadata(
+	map_data: WdcMapGenerationTypes.MapData,
+	plan: WdcMapGenerationTypes.RegionPlan
+) -> Array[Dictionary]:
+	var issues: Array[Dictionary] = []
+	var boss_region = plan.try_get_by_role(WdcMapGenerationTypes.REGION_ROLE_BOSS)
+	for instance: Dictionary in map_data.poi_instances:
+		if str(instance.get("instance_id", "")) != boss_region.core_poi_instance_id:
+			continue
+		var metadata_value: Variant = instance.get("core_metadata", null)
+		if not (metadata_value is Dictionary):
+			return [_four_region_issue(
+				"invalid_core_poi_metadata",
+				"poi_instances.core_metadata",
+				WdcMapGenerationTypes.REGION_ROLE_BOSS,
+				"BOSS 核心 POI 缺少 canonical reward metadata"
+			)]
+		var metadata: Dictionary = metadata_value as Dictionary
+		var main_room_rect: Rect2i = _rect_from_dictionary(instance.get("main_room", {}))
+		var footprint_keys: Dictionary = _cell_key_lookup(
+			_cells_from_dictionary_array(instance.get("footprint_cells", []))
+		)
+		if str(metadata.get("reward_recipe_id", "")).is_empty():
+			issues.append(_four_region_issue(
+				"invalid_core_poi_metadata",
+				"poi_instances.core_metadata.reward_recipe_id",
+				WdcMapGenerationTypes.REGION_ROLE_BOSS,
+				"BOSS 核心 POI reward_recipe_id 不能为空"
+			))
+		var gate_cells_value: Variant = metadata.get("reward_gate_cells", [])
+		if not (gate_cells_value is Array) or (gate_cells_value as Array).is_empty():
+			issues.append(_four_region_issue(
+				"invalid_core_poi_metadata",
+				"poi_instances.core_metadata.reward_gate_cells",
+				WdcMapGenerationTypes.REGION_ROLE_BOSS,
+				"BOSS 核心 POI reward gate 坐标不能为空"
+			))
+		else:
+			for cell_value: Variant in gate_cells_value as Array:
+				var gate_cell: Vector2i = _cell_from_variant(cell_value)
+				var gate_region = plan.try_get_at(gate_cell)
+				var gate_data: WdcMapGenerationTypes.CellData = map_data.get_cell(
+					gate_cell.x,
+					gate_cell.y
+				)
+				var outward_direction: Vector2i = _main_room_gate_outward_direction(
+					gate_cell,
+					main_room_rect
+				)
+				var outside_cell: Vector2i = gate_cell + outward_direction
+				var outside_data: WdcMapGenerationTypes.CellData = (
+					map_data.get_cell(outside_cell.x, outside_cell.y)
+					if outward_direction != Vector2i.ZERO
+					else null
+				)
+				if (
+					gate_region == null
+					or gate_region.role != WdcMapGenerationTypes.REGION_ROLE_BOSS
+					or not footprint_keys.has(_key(gate_cell.x, gate_cell.y))
+					or gate_data == null
+					or gate_data.cell_type != WdcMapGenerationTypes.CellType.WALL
+					or gate_data.special_block_type
+					!= WdcMapGenerationTypes.SpecialBlockType.POI_WALL
+					or not gate_data.is_poi_protected
+					or outside_data == null
+					or outside_data.cell_type != WdcMapGenerationTypes.CellType.FLOOR
+					or outside_data.special_block_type
+					!= WdcMapGenerationTypes.SpecialBlockType.NONE
+					or outside_data.is_poi_protected
+				):
+					issues.append(_four_region_issue(
+						"invalid_core_poi_metadata",
+						"poi_instances.core_metadata.reward_gate_cells",
+						WdcMapGenerationTypes.REGION_ROLE_BOSS,
+						"奖励门必须是 BOSS 核心 POI footprint 内、外侧可通行的受保护结构墙"
+					))
+		var object_cells_value: Variant = metadata.get("reward_object_cells", [])
+		if not (object_cells_value is Array) or (object_cells_value as Array).is_empty():
+			issues.append(_four_region_issue(
+				"invalid_core_poi_metadata",
+				"poi_instances.core_metadata.reward_object_cells",
+				WdcMapGenerationTypes.REGION_ROLE_BOSS,
+				"BOSS 核心 POI reward object 坐标不能为空"
+			))
+		else:
+			for cell_value: Variant in object_cells_value as Array:
+				var object_cell: Vector2i = _cell_from_variant(cell_value)
+				var object_region = plan.try_get_at(object_cell)
+				var object_data: WdcMapGenerationTypes.CellData = map_data.get_cell(
+					object_cell.x,
+					object_cell.y
+				)
+				if (
+					object_region == null
+					or object_region.role != WdcMapGenerationTypes.REGION_ROLE_BOSS
+					or not main_room_rect.has_point(object_cell)
+					or not footprint_keys.has(_key(object_cell.x, object_cell.y))
+					or object_data == null
+					or object_data.cell_type != WdcMapGenerationTypes.CellType.FLOOR
+					or object_data.special_block_type
+					!= WdcMapGenerationTypes.SpecialBlockType.NONE
+					or object_data.has_mineral
+				):
+					issues.append(_four_region_issue(
+						"invalid_core_poi_metadata",
+						"poi_instances.core_metadata.reward_object_cells",
+						WdcMapGenerationTypes.REGION_ROLE_BOSS,
+						"奖励物件必须位于 BOSS 核心 POI 主房的可放置地板"
+					))
+		return issues
+	return [_four_region_issue(
+		"invalid_core_poi_metadata",
+		"poi_instances",
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+		"找不到 BOSS 核心 POI instance"
+	)]
+
+
+func _is_special_four_region_extraction_site(site: Dictionary) -> bool:
+	var extraction_kind: String = str(site.get("extraction_kind", "normal")).strip_edges().to_lower()
+	if extraction_kind not in ["", "normal", "regular"]:
+		return true
+	var site_kind: String = str(site.get("site_kind", "extraction")).strip_edges().to_lower()
+	if site_kind not in ["", "extraction", "regular", "normal"]:
+		return true
+	if bool(site.get("guaranteed", false)):
+		return true
+	for forbidden_key: String in [
+		"boss_encounter_id",
+		"reward_encounter_id",
+		"reward_recipe_id",
+		"reward_kind",
+		"vault_id",
+	]:
+		if site.has(forbidden_key):
+			return true
+	return false
+
+
+func _has_unprotected_regular_access_boundary(
+	map_data: WdcMapGenerationTypes.MapData,
+	membership: PackedInt32Array,
+	region_index: int
+) -> bool:
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			if int(membership[y * map_data.width + x]) != region_index:
+				continue
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			if cell != null and cell.is_poi_protected:
+				continue
+			for direction: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var neighbor: Vector2i = Vector2i(x, y) + direction
+				if not map_data.is_in_bounds(neighbor.x, neighbor.y):
+					continue
+				if int(membership[neighbor.y * map_data.width + neighbor.x]) != 0:
+					continue
+				var neighbor_cell: WdcMapGenerationTypes.CellData = map_data.get_cell(
+					neighbor.x,
+					neighbor.y
+				)
+				if neighbor_cell != null and not neighbor_cell.is_poi_protected:
+					return true
+	return false
+
+
+func _has_regular_only_route(
+	map_data: WdcMapGenerationTypes.MapData,
+	membership: PackedInt32Array,
+	start: Vector2i,
+	target: Vector2i
+) -> bool:
+	if start == target:
+		return true
+	var queue: Array[Vector2i] = [start]
+	var seen: Dictionary = {_key(start.x, start.y): true}
+	var cursor: int = 0
+	while cursor < queue.size():
+		var current: Vector2i = queue[cursor]
+		cursor += 1
+		for direction: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var neighbor: Vector2i = current + direction
+			if not map_data.is_in_bounds(neighbor.x, neighbor.y):
+				continue
+			if int(membership[neighbor.y * map_data.width + neighbor.x]) != 0:
+				continue
+			var key: String = _key(neighbor.x, neighbor.y)
+			if seen.has(key):
+				continue
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(neighbor.x, neighbor.y)
+			if cell == null or cell.is_poi_protected:
+				continue
+			if neighbor == target:
+				return true
+			seen[key] = true
+			queue.append(neighbor)
+	return false
+
+
+func _collect_region_candidate_cells(
+	map_data: WdcMapGenerationTypes.MapData,
+	resolver: WdcRegionContentResolver,
+	role: String,
+	require_wall: bool,
+	avoid_protected: bool
+) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			var candidate: Vector2i = Vector2i(x, y)
+			if not resolver.is_cell_in_role(candidate, role):
+				continue
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			if cell == null or (avoid_protected and cell.is_poi_protected):
+				continue
+			if require_wall and cell.cell_type != WdcMapGenerationTypes.CellType.WALL:
+				continue
+			if not require_wall and cell.cell_type != WdcMapGenerationTypes.CellType.FLOOR:
+				continue
+			result.append(candidate)
+	return result
+
+
+func _pick_weighted_dictionary(
+	entries: Array[Dictionary],
+	rng: RandomNumberGenerator
+) -> Dictionary:
+	var total_weight: float = 0.0
+	for entry: Dictionary in entries:
+		total_weight += maxf(float(entry.get("weight", 0.0)), 0.0)
+	if total_weight <= 0.0:
+		return {}
+	var roll: float = rng.randf() * total_weight
+	for entry: Dictionary in entries:
+		roll -= maxf(float(entry.get("weight", 0.0)), 0.0)
+		if roll <= 0.0:
+			return entry.duplicate(true)
+	return entries.back().duplicate(true)
+
+
+func _shuffle_dictionary_array(
+	values: Array[Dictionary],
+	rng: RandomNumberGenerator
+) -> void:
+	for index: int in range(values.size() - 1, 0, -1):
+		var swap_index: int = rng.randi_range(0, index)
+		var temp: Dictionary = values[index]
+		values[index] = values[swap_index]
+		values[swap_index] = temp
+
+
+func _rect_from_dictionary(value: Variant) -> Rect2i:
+	if value is Rect2i:
+		return value as Rect2i
+	if not (value is Dictionary):
+		return Rect2i()
+	var rect: Dictionary = value as Dictionary
+	return Rect2i(
+		int(rect.get("x", 0)),
+		int(rect.get("y", 0)),
+		int(rect.get("width", 0)),
+		int(rect.get("height", 0))
+	)
+
+
+func _site_cell(site: Dictionary) -> Vector2i:
+	if site.has("cell"):
+		return _cell_from_variant(site.get("cell"))
+	return Vector2i(int(site.get("x", -1)), int(site.get("y", -1)))
+
+
+func _collect_trap_region_cells(site: Dictionary) -> Array[Vector2i]:
+	for field_name: String in ["nodes", "cells"]:
+		var cells: Array[Vector2i] = _cells_from_dictionary_array(site.get(field_name, []))
+		if not cells.is_empty():
+			return cells
+	var anchor: Vector2i = _site_cell(site)
+	var cells: Array[Vector2i] = []
+	if anchor != Vector2i(-1, -1):
+		cells.append(anchor)
+	return cells
+
+
+func _collect_camp_region_cells(camp: Dictionary) -> Array[Vector2i]:
+	var cells_by_key: Dictionary = {}
+	var room_rect: Rect2i = _rect_from_dictionary(camp.get("room_rect", {}))
+	for room_cell: Vector2i in _rect_cells(room_rect):
+		cells_by_key[_key(room_cell.x, room_cell.y)] = room_cell
+	var chest_cell: Vector2i = _cell_from_variant(camp.get("chest_cell", null))
+	if chest_cell != Vector2i(-1, -1):
+		cells_by_key[_key(chest_cell.x, chest_cell.y)] = chest_cell
+	for guard_value: Variant in camp.get("guard_sites", []):
+		if not (guard_value is Dictionary):
+			continue
+		var guard_cell: Vector2i = _site_cell(guard_value as Dictionary)
+		if guard_cell != Vector2i(-1, -1):
+			cells_by_key[_key(guard_cell.x, guard_cell.y)] = guard_cell
+	var cells: Array[Vector2i] = []
+	for cell_value: Variant in cells_by_key.values():
+		if cell_value is Vector2i:
+			cells.append(cell_value as Vector2i)
+	return cells
+
+
+func _make_four_region_rng(
+	resolved_seed: int,
+	attempt_index: int,
+	salt: int
+) -> RandomNumberGenerator:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var mixed: int = resolved_seed & 0x7fffffff
+	mixed = int((mixed ^ ((attempt_index + 1) * 1103515245)) & 0x7fffffff)
+	mixed = int((mixed ^ (salt * 265443576)) & 0x7fffffff)
+	rng.seed = maxi(mixed, 1)
+	return rng
+
+
+func _four_region_failure(
+	code: String,
+	path: String,
+	role: String,
+	message: String
+) -> Dictionary:
+	return {"success": false, "issues": [_four_region_issue(code, path, role, message)]}
+
+
+func _four_region_issue(
+	code: String,
+	path: String,
+	role: String,
+	message: String
+) -> Dictionary:
+	return WdcMapGenerationTypes.make_generation_issue(code, path, role, message)
+
+
 func get_last_generation_issues() -> Array[Dictionary]:
 	return last_generation_issues.duplicate(true)
 
@@ -169,6 +2465,16 @@ func get_last_generation_issues() -> Array[Dictionary]:
 func _fail_generation(issue: Dictionary) -> Dictionary:
 	last_generation_issues = [issue.duplicate(true)]
 	last_generation_error = str(issue.get("message", "地图生成失败"))
+	return {}
+
+
+func _fail_generation_issues(issues: Array[Dictionary]) -> Dictionary:
+	last_generation_issues = issues.duplicate(true)
+	last_generation_error = (
+		str(last_generation_issues[0].get("message", "地图生成失败"))
+		if not last_generation_issues.is_empty()
+		else "地图生成失败"
+	)
 	return {}
 
 
@@ -399,6 +2705,610 @@ func _try_place_configured_poi(
 	return true
 
 
+func _try_place_four_region_poi(
+	map_data: WdcMapGenerationTypes.MapData,
+	config: WdcMapGenerationTypes.MapConfig,
+	template_dict: Dictionary,
+	role: String,
+	region_index: int,
+	membership: PackedInt32Array,
+	requested_center: Vector2i,
+	is_core: bool,
+	attempt_index: int,
+	instance_ordinal: int,
+	rng: RandomNumberGenerator,
+	resolver: WdcRegionContentResolver = null
+) -> Dictionary:
+	if not bool(template_dict.get("enabled", true)):
+		return {}
+	var main_room_cfg: Dictionary = template_dict.get("main_room", {}) as Dictionary
+	var main_width_min: int = maxi(int(main_room_cfg.get("width_min", 1)), 1)
+	var main_width_max: int = maxi(int(main_room_cfg.get("width_max", main_width_min)), main_width_min)
+	var main_height_min: int = maxi(int(main_room_cfg.get("height_min", 1)), 1)
+	var main_height_max: int = maxi(int(main_room_cfg.get("height_max", main_height_min)), main_height_min)
+	var main_width: int = rng.randi_range(main_width_min, main_width_max)
+	var main_height: int = rng.randi_range(main_height_min, main_height_max)
+	var main_room_rect: Rect2i = Rect2i(
+		requested_center.x - int(floor(float(main_width) * 0.5)),
+		requested_center.y - int(floor(float(main_height) * 0.5)),
+		main_width,
+		main_height
+	)
+	if not _is_room_rect_in_bounds(map_data, main_room_rect):
+		return {}
+	var rooms: Array[Rect2i] = [main_room_rect]
+	var sub_room_cfg: Dictionary = template_dict.get("sub_rooms", {}) as Dictionary
+	var sub_count_min: int = maxi(int(sub_room_cfg.get("count_min", 0)), 0)
+	var sub_count_max: int = maxi(int(sub_room_cfg.get("count_max", sub_count_min)), sub_count_min)
+	var sub_room_count: int = rng.randi_range(sub_count_min, sub_count_max) if sub_count_max > 0 else 0
+	for _sub_room_index: int in range(sub_room_count):
+		var sub_room_rect: Rect2i = _sample_four_region_sub_room_rect(
+			map_data,
+			rooms,
+			main_room_rect,
+			sub_room_cfg,
+			rng
+		)
+		if sub_room_rect.size == Vector2i.ZERO:
+			continue
+		rooms.append(sub_room_rect)
+	if rooms.size() - 1 < sub_count_min:
+		return {}
+	var corridor_edges: Array[Dictionary] = _build_four_region_poi_connectivity_edges(
+		rooms,
+		template_dict,
+		rng
+	)
+	if rooms.size() > 1 and corridor_edges.is_empty():
+		return {}
+	var corridor_plans: Array[Dictionary] = _build_corridor_plans_for_edges(
+		rooms,
+		corridor_edges,
+		template_dict
+	)
+	var corridor_cells: Array[Vector2i] = _collect_unique_corridor_cells(corridor_plans)
+	if rooms.size() > 1 and corridor_cells.is_empty():
+		return {}
+	var structural_footprint: Array[Vector2i] = _collect_poi_structural_footprint(
+		rooms,
+		corridor_cells,
+		0
+	)
+	var validation_padding: int = (
+		_get_four_region_core_padding(config, role)
+		if is_core
+		else maxi(int(template_dict.get("placement", {}).get("footprint_padding_cells", 0)), 0)
+	)
+	var validated_footprint: Array[Vector2i] = _expand_footprint(
+		structural_footprint,
+		validation_padding,
+		map_data
+	)
+	if resolver != null:
+		var resolved_footprint: Dictionary = resolver.resolve_footprint_for_role(
+			validated_footprint,
+			role
+		)
+		if not bool(resolved_footprint.get("valid", false)):
+			return {}
+		region_index = int(resolved_footprint.get("region_index", -1))
+	elif not _footprint_belongs_to_region(
+		validated_footprint,
+		membership,
+		Vector2i(map_data.width, map_data.height),
+		region_index
+	):
+		return {}
+	var bounds: Rect2i = _bounds_from_cells(structural_footprint)
+	if bounds.size == Vector2i.ZERO or not _is_poi_bounds_valid(map_data, bounds):
+		return {}
+	if _four_region_poi_overlaps_existing(map_data, structural_footprint, bounds):
+		return {}
+	var center_cell: Vector2i = _rect_center_cell(main_room_rect)
+	var core_metadata: Dictionary = {}
+	if is_core:
+		core_metadata = _materialize_core_metadata(
+			template_dict.get("core_metadata", {}),
+			center_cell,
+			map_data,
+			membership,
+			region_index
+		)
+		if template_dict.has("core_metadata") and core_metadata.is_empty():
+			return {}
+		if not _is_four_region_core_metadata_geometry_valid(
+			core_metadata,
+			main_room_rect,
+			structural_footprint,
+			map_data,
+			membership,
+			region_index
+		):
+			return {}
+	var compat_poi_type: int = _four_region_poi_type(role, is_core)
+	_carve_poi_rooms_and_corridors(map_data, rooms, corridor_cells, compat_poi_type)
+	_place_poi_outer_walls(map_data, rooms, corridor_cells, compat_poi_type)
+	if is_core and not core_metadata.is_empty():
+		_apply_four_region_core_metadata_geometry(
+			map_data,
+			core_metadata,
+			main_room_rect,
+			compat_poi_type
+		)
+	var template_id: String = str(template_dict.get("id", ""))
+	var instance_id: String = "%s:%s:a%d:n%d:%d:%d" % [
+		role,
+		template_id,
+		attempt_index,
+		instance_ordinal,
+		center_cell.x,
+		center_cell.y,
+	]
+	var torch_sites: Array[Vector2i] = _build_main_room_torch_sites(main_room_rect, template_dict)
+	var instance: Dictionary = {
+		"instance_id": instance_id,
+		"template_id": template_id,
+		"poi_type": _four_region_poi_type(role, is_core),
+		"region_index": region_index,
+		"region_role": role,
+		"is_core": is_core,
+		"bounds": bounds,
+		"main_room": _rect_to_dict(main_room_rect),
+		"main_room_center": center_cell,
+		"sub_rooms": _rect_array_to_dict_array(rooms.slice(1)),
+		"corridors": _corridor_plans_to_dict_array(corridor_plans),
+		"corridor_cell_count": corridor_cells.size(),
+		"center_cell": center_cell,
+		"torch_sites": _vector2i_array_to_dict_array(torch_sites),
+		"room_content_plans": [],
+		"footprint_cells": _vector2i_array_to_dict_array(structural_footprint),
+	}
+	if is_core:
+		instance["core_metadata"] = core_metadata
+	map_data.poi_centers.append({
+		"x": center_cell.x,
+		"y": center_cell.y,
+		"type": _four_region_poi_type(role, is_core),
+		"template_id": template_id,
+		"instance_id": instance_id,
+		"region_index": region_index,
+		"region_role": role,
+		"is_core": is_core,
+	})
+	map_data.poi_instances.append(instance)
+	return instance
+
+
+func _build_four_region_poi_connectivity_edges(
+	rooms: Array[Rect2i],
+	template_dict: Dictionary,
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	if rooms.size() <= 1:
+		return []
+	var connectivity: Dictionary = template_dict.get("connectivity", {}) as Dictionary
+	var neighbor_limit: int = maxi(int(connectivity.get("candidate_neighbors_per_room", 2)), 1)
+	var candidate_edges: Array[Dictionary] = []
+	var seen_keys: Dictionary = {}
+	for room_index: int in range(rooms.size()):
+		var room_distances: Array[Dictionary] = []
+		var center_a: Vector2i = _rect_center_cell(rooms[room_index])
+		for other_index: int in range(rooms.size()):
+			if room_index == other_index:
+				continue
+			var center_b: Vector2i = _rect_center_cell(rooms[other_index])
+			room_distances.append({
+				"from": room_index,
+				"to": other_index,
+				"distance": abs(center_a.x - center_b.x) + abs(center_a.y - center_b.y),
+			})
+		room_distances.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var distance_a: int = int(a.get("distance", 0))
+			var distance_b: int = int(b.get("distance", 0))
+			if distance_a != distance_b:
+				return distance_a < distance_b
+			return int(a.get("to", 0)) < int(b.get("to", 0))
+		)
+		for neighbor_index: int in range(mini(neighbor_limit, room_distances.size())):
+			var edge: Dictionary = room_distances[neighbor_index]
+			var key: String = _edge_key(int(edge.get("from", 0)), int(edge.get("to", 0)))
+			if seen_keys.has(key):
+				continue
+			seen_keys[key] = true
+			candidate_edges.append(edge)
+	_ensure_candidate_edge_connectivity(rooms, candidate_edges, seen_keys)
+	var mst_edges: Array[Dictionary] = _build_mst_edges(rooms.size(), candidate_edges)
+	var selected_keys: Dictionary = {}
+	for edge: Dictionary in mst_edges:
+		selected_keys[_edge_key(int(edge.get("from", 0)), int(edge.get("to", 0)))] = true
+	var extra_chance: float = clampf(float(connectivity.get("extra_connection_chance", 0.0)), 0.0, 1.0)
+	var max_extra: int = maxi(int(connectivity.get("max_extra_connections", 0)), 0)
+	if max_extra <= 0 or extra_chance <= 0.0:
+		return mst_edges
+	var extra_candidates: Array[Dictionary] = []
+	for edge: Dictionary in candidate_edges:
+		if selected_keys.has(_edge_key(int(edge.get("from", 0)), int(edge.get("to", 0)))):
+			continue
+		extra_candidates.append(edge)
+	_shuffle_dictionary_array(extra_candidates, rng)
+	var extra_edges: Array[Dictionary] = []
+	for edge: Dictionary in extra_candidates:
+		if extra_edges.size() >= max_extra:
+			break
+		if rng.randf() <= extra_chance:
+			extra_edges.append(edge)
+	return mst_edges + extra_edges
+
+
+func _sample_four_region_sub_room_rect(
+	map_data: WdcMapGenerationTypes.MapData,
+	existing_rooms: Array[Rect2i],
+	main_room_rect: Rect2i,
+	sub_room_cfg: Dictionary,
+	rng: RandomNumberGenerator
+) -> Rect2i:
+	var attempts: int = maxi(int(sub_room_cfg.get("placement_attempts_per_room", 24)), 24)
+	var width_min: int = maxi(int(sub_room_cfg.get("width_min", 1)), 1)
+	var width_max: int = maxi(int(sub_room_cfg.get("width_max", width_min)), width_min)
+	var height_min: int = maxi(int(sub_room_cfg.get("height_min", 1)), 1)
+	var height_max: int = maxi(int(sub_room_cfg.get("height_max", height_min)), height_min)
+	var min_gap: int = maxi(int(sub_room_cfg.get("min_gap_from_rooms_cells", 1)), 0)
+	var configured_radius_min: int = maxi(int(sub_room_cfg.get("placement_radius_min_cells", 1)), 1)
+	var configured_radius_max: int = maxi(
+		int(sub_room_cfg.get("placement_radius_max_cells", configured_radius_min)),
+		configured_radius_min
+	)
+	var main_center: Vector2i = _rect_center_cell(main_room_rect)
+	var directions: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
+	_shuffle_vector2i_array(directions, rng)
+	for attempt: int in range(attempts):
+		var width: int = rng.randi_range(width_min, width_max)
+		var height: int = rng.randi_range(height_min, height_max)
+		var direction: Vector2i = directions[attempt % directions.size()]
+		var minimum_radius: int = configured_radius_min
+		if direction.x != 0:
+			minimum_radius = maxi(
+				minimum_radius,
+				int(ceili(float(main_room_rect.size.x + width) * 0.5)) + min_gap
+			)
+		else:
+			minimum_radius = maxi(
+				minimum_radius,
+				int(ceili(float(main_room_rect.size.y + height) * 0.5)) + min_gap
+			)
+		var maximum_radius: int = maxi(configured_radius_max, minimum_radius)
+		var radius: int = rng.randi_range(minimum_radius, maximum_radius)
+		var center: Vector2i = main_center + direction * radius
+		var candidate: Rect2i = Rect2i(
+			center.x - int(floor(float(width) * 0.5)),
+			center.y - int(floor(float(height) * 0.5)),
+			width,
+			height
+		)
+		if not _is_room_rect_in_bounds(map_data, candidate):
+			continue
+		var overlaps: bool = false
+		for existing_room: Rect2i in existing_rooms:
+			if _rect_intersects_with_margin(candidate, existing_room, min_gap):
+				overlaps = true
+				break
+		if not overlaps:
+			return candidate
+	return Rect2i()
+
+
+func _collect_center_offset_candidates(
+	center: Vector2i,
+	max_offset: int,
+	map_data: WdcMapGenerationTypes.MapData,
+	membership: PackedInt32Array,
+	region_index: int
+) -> Array[Vector2i]:
+	var candidates: Array[Vector2i] = []
+	for y: int in range(center.y - max_offset, center.y + max_offset + 1):
+		for x: int in range(center.x - max_offset, center.x + max_offset + 1):
+			var candidate: Vector2i = Vector2i(x, y)
+			if not map_data.is_in_bounds(x, y):
+				continue
+			if int(membership[y * map_data.width + x]) != region_index:
+				continue
+			candidates.append(candidate)
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var distance_a: int = a.distance_squared_to(center)
+		var distance_b: int = b.distance_squared_to(center)
+		if distance_a != distance_b:
+			return distance_a < distance_b
+		return a.y < b.y if a.y != b.y else a.x < b.x
+	)
+	return candidates
+
+
+func _collect_poi_structural_footprint(
+	rooms: Array[Rect2i],
+	corridor_cells: Array[Vector2i],
+	extra_padding: int
+) -> Array[Vector2i]:
+	var interior: Dictionary = {}
+	for room: Rect2i in rooms:
+		for y: int in range(room.position.y, room.end.y):
+			for x: int in range(room.position.x, room.end.x):
+				interior[_key(x, y)] = Vector2i(x, y)
+	for corridor_cell: Vector2i in corridor_cells:
+		interior[_key(corridor_cell.x, corridor_cell.y)] = corridor_cell
+	var structural: Dictionary = interior.duplicate()
+	for cell_value: Variant in interior.values():
+		var cell: Vector2i = cell_value as Vector2i
+		for offset_y: int in range(-1, 2):
+			for offset_x: int in range(-1, 2):
+				var shell_cell: Vector2i = cell + Vector2i(offset_x, offset_y)
+				structural[_key(shell_cell.x, shell_cell.y)] = shell_cell
+	var cells: Array[Vector2i] = []
+	for cell_value: Variant in structural.values():
+		if cell_value is Vector2i:
+			cells.append(cell_value as Vector2i)
+	if extra_padding <= 0:
+		return cells
+	return _expand_footprint_without_bounds(cells, extra_padding)
+
+
+func _expand_footprint(
+	cells: Array[Vector2i],
+	padding: int,
+	map_data: WdcMapGenerationTypes.MapData
+) -> Array[Vector2i]:
+	var expanded: Array[Vector2i] = _expand_footprint_without_bounds(cells, padding)
+	for cell: Vector2i in expanded:
+		if not map_data.is_in_bounds(cell.x, cell.y):
+			return []
+	return expanded
+
+
+func _expand_footprint_without_bounds(
+	cells: Array[Vector2i],
+	padding: int
+) -> Array[Vector2i]:
+	var values: Dictionary = {}
+	for cell: Vector2i in cells:
+		for offset_y: int in range(-padding, padding + 1):
+			for offset_x: int in range(-padding, padding + 1):
+				var expanded_cell: Vector2i = cell + Vector2i(offset_x, offset_y)
+				values[_key(expanded_cell.x, expanded_cell.y)] = expanded_cell
+	var result: Array[Vector2i] = []
+	for value: Variant in values.values():
+		if value is Vector2i:
+			result.append(value as Vector2i)
+	return result
+
+
+func _footprint_belongs_to_region(
+	cells: Array[Vector2i],
+	membership: PackedInt32Array,
+	map_size: Vector2i,
+	region_index: int
+) -> bool:
+	if cells.is_empty():
+		return false
+	for cell: Vector2i in cells:
+		if cell.x < 0 or cell.y < 0 or cell.x >= map_size.x or cell.y >= map_size.y:
+			return false
+		if int(membership[cell.y * map_size.x + cell.x]) != region_index:
+			return false
+	return true
+
+
+func _four_region_poi_overlaps_existing(
+	map_data: WdcMapGenerationTypes.MapData,
+	footprint: Array[Vector2i],
+	bounds: Rect2i
+) -> bool:
+	var footprint_keys: Dictionary = _cell_key_lookup(footprint)
+	for existing: Dictionary in map_data.poi_instances:
+		var existing_footprint: Array[Vector2i] = _cells_from_dictionary_array(
+			existing.get("footprint_cells", [])
+		)
+		if not existing_footprint.is_empty():
+			for cell: Vector2i in existing_footprint:
+				if footprint_keys.has(_key(cell.x, cell.y)):
+					return true
+			continue
+		var existing_bounds_value: Variant = existing.get("bounds", Rect2i())
+		if existing_bounds_value is Rect2i and bounds.intersects(existing_bounds_value as Rect2i):
+			return true
+	return false
+
+
+func _bounds_from_cells(cells: Array[Vector2i]) -> Rect2i:
+	if cells.is_empty():
+		return Rect2i()
+	var min_cell: Vector2i = cells[0]
+	var max_cell: Vector2i = cells[0]
+	for cell: Vector2i in cells:
+		min_cell.x = mini(min_cell.x, cell.x)
+		min_cell.y = mini(min_cell.y, cell.y)
+		max_cell.x = maxi(max_cell.x, cell.x)
+		max_cell.y = maxi(max_cell.y, cell.y)
+	return Rect2i(min_cell, max_cell - min_cell + Vector2i.ONE)
+
+
+func _materialize_core_metadata(
+	raw_value: Variant,
+	main_room_center: Vector2i,
+	map_data: WdcMapGenerationTypes.MapData,
+	membership: PackedInt32Array,
+	region_index: int
+) -> Dictionary:
+	if not (raw_value is Dictionary):
+		return {}
+	var raw: Dictionary = raw_value as Dictionary
+	var result: Dictionary = {
+		"reward_gate_cells": [],
+		"reward_object_cells": [],
+		"reward_recipe_id": str(raw.get("reward_recipe_id", "")),
+	}
+	for field_name: String in ["reward_gate_cells", "reward_object_cells"]:
+		var values: Variant = raw.get(field_name, [])
+		if not (values is Array):
+			return {}
+		var absolute_cells: Array[Dictionary] = []
+		for value: Variant in values as Array:
+			var offset: Vector2i = _cell_from_variant(value)
+			var absolute_cell: Vector2i = main_room_center + offset
+			if (
+				not map_data.is_in_bounds(absolute_cell.x, absolute_cell.y)
+				or int(membership[absolute_cell.y * map_data.width + absolute_cell.x]) != region_index
+			):
+				return {}
+			absolute_cells.append(_vector2i_to_dict(absolute_cell))
+		result[field_name] = absolute_cells
+	return result
+
+
+func _is_four_region_core_metadata_geometry_valid(
+	metadata: Dictionary,
+	main_room_rect: Rect2i,
+	structural_footprint: Array[Vector2i],
+	map_data: WdcMapGenerationTypes.MapData,
+	membership: PackedInt32Array,
+	region_index: int
+) -> bool:
+	if metadata.is_empty():
+		return true
+	var footprint_keys: Dictionary = _cell_key_lookup(structural_footprint)
+	for gate_value: Variant in metadata.get("reward_gate_cells", []) as Array:
+		var gate_cell: Vector2i = _cell_from_variant(gate_value)
+		var outward_direction: Vector2i = _main_room_gate_outward_direction(
+			gate_cell,
+			main_room_rect
+		)
+		if outward_direction == Vector2i.ZERO or not footprint_keys.has(_key(gate_cell.x, gate_cell.y)):
+			return false
+		var outside_cell: Vector2i = gate_cell + outward_direction
+		if (
+			not map_data.is_in_bounds(outside_cell.x, outside_cell.y)
+			or int(membership[outside_cell.y * map_data.width + outside_cell.x]) != region_index
+		):
+			return false
+	for object_value: Variant in metadata.get("reward_object_cells", []) as Array:
+		var object_cell: Vector2i = _cell_from_variant(object_value)
+		if (
+			not main_room_rect.has_point(object_cell)
+			or not footprint_keys.has(_key(object_cell.x, object_cell.y))
+		):
+			return false
+	return true
+
+
+func _apply_four_region_core_metadata_geometry(
+	map_data: WdcMapGenerationTypes.MapData,
+	metadata: Dictionary,
+	main_room_rect: Rect2i,
+	compat_poi_type: int
+) -> void:
+	for gate_value: Variant in metadata.get("reward_gate_cells", []) as Array:
+		var gate_cell: Vector2i = _cell_from_variant(gate_value)
+		var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(gate_cell.x, gate_cell.y)
+		if cell == null:
+			continue
+		cell.cell_type = WdcMapGenerationTypes.CellType.WALL
+		cell.poi_type = compat_poi_type
+		cell.is_poi_protected = true
+		cell.has_mineral = false
+		cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.POI_WALL
+		cell.trace_type = WdcMapGenerationTypes.PoiType.NONE
+		WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+		var outward_direction: Vector2i = _main_room_gate_outward_direction(
+			gate_cell,
+			main_room_rect
+		)
+		if outward_direction != Vector2i.ZERO:
+			_carve_site_floor_cell(map_data, gate_cell + outward_direction)
+	for object_value: Variant in metadata.get("reward_object_cells", []) as Array:
+		var object_cell: Vector2i = _cell_from_variant(object_value)
+		var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(object_cell.x, object_cell.y)
+		if cell == null:
+			continue
+		cell.cell_type = WdcMapGenerationTypes.CellType.FLOOR
+		cell.poi_type = compat_poi_type
+		cell.is_poi_protected = true
+		cell.has_mineral = false
+		cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.NONE
+		cell.trace_type = WdcMapGenerationTypes.PoiType.NONE
+		WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+
+
+func _main_room_gate_outward_direction(gate_cell: Vector2i, main_room_rect: Rect2i) -> Vector2i:
+	if (
+		gate_cell.y == main_room_rect.position.y - 1
+		and gate_cell.x >= main_room_rect.position.x
+		and gate_cell.x < main_room_rect.end.x
+	):
+		return Vector2i.UP
+	if (
+		gate_cell.y == main_room_rect.end.y
+		and gate_cell.x >= main_room_rect.position.x
+		and gate_cell.x < main_room_rect.end.x
+	):
+		return Vector2i.DOWN
+	if (
+		gate_cell.x == main_room_rect.position.x - 1
+		and gate_cell.y >= main_room_rect.position.y
+		and gate_cell.y < main_room_rect.end.y
+	):
+		return Vector2i.LEFT
+	if (
+		gate_cell.x == main_room_rect.end.x
+		and gate_cell.y >= main_room_rect.position.y
+		and gate_cell.y < main_room_rect.end.y
+	):
+		return Vector2i.RIGHT
+	return Vector2i.ZERO
+
+
+func _get_four_region_core_padding(
+	config: WdcMapGenerationTypes.MapConfig,
+	role: String
+) -> int:
+	var slot: Dictionary = config.region_layout.get(role, {}) as Dictionary
+	var profile_id: String = str(slot.get("layout_profile_id", ""))
+	var generation_value: Variant = config.get("region_generation")
+	if not (generation_value is Dictionary):
+		return 0
+	var profiles_value: Variant = (generation_value as Dictionary).get("layout_profiles", [])
+	if not (profiles_value is Array):
+		return 0
+	for profile_value: Variant in profiles_value as Array:
+		if profile_value is Dictionary and str((profile_value as Dictionary).get("id", "")) == profile_id:
+			return maxi(int((profile_value as Dictionary).get("core_poi_padding_cells", 0)), 0)
+	return 0
+
+
+func _four_region_poi_type(role: String, is_core: bool) -> int:
+	if is_core and role == WdcMapGenerationTypes.REGION_ROLE_BOSS:
+		return WdcMapGenerationTypes.PoiType.LARGE_RUIN
+	if role == WdcMapGenerationTypes.REGION_ROLE_HIGH_2:
+		return WdcMapGenerationTypes.PoiType.MEDIUM_BIOME
+	return WdcMapGenerationTypes.PoiType.SMALL_ORE
+
+
+func _cells_from_dictionary_array(value: Variant) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if not (value is Array):
+		return result
+	for entry: Variant in value as Array:
+		result.append(_cell_from_variant(entry))
+	return result
+
+
+func _cell_from_variant(value: Variant) -> Vector2i:
+	if value is Vector2i:
+		return value as Vector2i
+	if value is Dictionary:
+		return Vector2i(int((value as Dictionary).get("x", 0)), int((value as Dictionary).get("y", 0)))
+	if value is Array and (value as Array).size() >= 2:
+		return Vector2i(int((value as Array)[0]), int((value as Array)[1]))
+	return Vector2i.ZERO
+
+
 func _sample_room_rect(
 	map_data: WdcMapGenerationTypes.MapData,
 	room_cfg: Dictionary,
@@ -583,7 +3493,10 @@ func _build_poi_connectivity_edges(
 			if selected_keys.has(edge_key):
 				continue
 			extra_candidates.append(edge)
-		extra_candidates.shuffle()
+		# 派生局部洗牌流但不推进主 RNG，保持 legacy 后续随机序列不变。
+		var shuffle_rng := RandomNumberGenerator.new()
+		shuffle_rng.seed = rng.state
+		_shuffle_dictionary_array(extra_candidates, shuffle_rng)
 		for edge: Dictionary in extra_candidates:
 			if extra_edges.size() >= max_extra_connections:
 				break
@@ -957,6 +3870,16 @@ func _rect_center_cell(room_rect: Rect2i) -> Vector2i:
 		room_rect.position.x + int(floor(room_rect.size.x * 0.5)),
 		room_rect.position.y + int(floor(room_rect.size.y * 0.5))
 	)
+
+
+func _rect_cells(room_rect: Rect2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if room_rect.size.x <= 0 or room_rect.size.y <= 0:
+		return cells
+	for y: int in range(room_rect.position.y, room_rect.position.y + room_rect.size.y):
+		for x: int in range(room_rect.position.x, room_rect.position.x + room_rect.size.x):
+			cells.append(Vector2i(x, y))
+	return cells
 
 
 func _rect_to_dict(room_rect: Rect2i) -> Dictionary:
@@ -1958,6 +4881,22 @@ func _clear_all_mineral_cells(map_data: WdcMapGenerationTypes.MapData) -> void:
 				continue
 			cell.has_mineral = false
 			if cell.special_block_type != WdcMapGenerationTypes.SpecialBlockType.NONE:
+				cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.NONE
+
+
+func _clear_four_region_mineral_cells(map_data: WdcMapGenerationTypes.MapData) -> void:
+	for y: int in range(map_data.height):
+		for x: int in range(map_data.width):
+			var cell: WdcMapGenerationTypes.CellData = map_data.get_cell(x, y)
+			if cell == null:
+				continue
+			cell.has_mineral = false
+			if cell.special_block_type in [
+				WdcMapGenerationTypes.SpecialBlockType.RARE_MINERAL,
+				WdcMapGenerationTypes.SpecialBlockType.TURQUOISE,
+				WdcMapGenerationTypes.SpecialBlockType.AMETHYST,
+				WdcMapGenerationTypes.SpecialBlockType.GOLD,
+			]:
 				cell.special_block_type = WdcMapGenerationTypes.SpecialBlockType.NONE
 
 
@@ -3600,6 +6539,21 @@ func _stable_site_tie_breaker(cell: Vector2i, salt: String) -> int:
 	)
 
 
+func _stable_four_region_site_tie_breaker(
+	cell: Vector2i,
+	salt: String,
+	resolved_seed: int,
+	attempt_index: int
+) -> int:
+	return abs(
+		int(cell.x * 73856093)
+		^ int(cell.y * 19349663)
+		^ int(maxi(resolved_seed, 1) * 83492791)
+		^ int((attempt_index + 1) * 265443576)
+		^ abs(salt.hash())
+	)
+
+
 func _key(x: int, y: int) -> String:
 	return "%d,%d" % [x, y]
 
@@ -3618,17 +6572,4 @@ func _build_server_tile_matrix(map_data: WdcMapGenerationTypes.MapData) -> Array
 
 
 func _encode_server_tile(cell: WdcMapGenerationTypes.CellData) -> int:
-	if cell == null:
-		return WdcMapGenerationTypes.ServerTileType.WALL
-	match cell.special_block_type:
-		WdcMapGenerationTypes.SpecialBlockType.TURQUOISE:
-			return WdcMapGenerationTypes.ServerTileType.TURQUOISE_ORE
-		WdcMapGenerationTypes.SpecialBlockType.AMETHYST:
-			return WdcMapGenerationTypes.ServerTileType.AMETHYST_ORE
-		WdcMapGenerationTypes.SpecialBlockType.GOLD:
-			return WdcMapGenerationTypes.ServerTileType.GOLD_BLOCK
-	if cell.has_mineral:
-		return WdcMapGenerationTypes.ServerTileType.MINERAL_WALL
-	if cell.cell_type == WdcMapGenerationTypes.CellType.FLOOR:
-		return WdcMapGenerationTypes.ServerTileType.EMPTY
-	return WdcMapGenerationTypes.ServerTileType.WALL
+	return WdcMapGenerationTypes.encode_server_tile(cell)

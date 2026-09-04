@@ -42,6 +42,18 @@ const REGION_DIFFICULTY_RANK_BY_ROLE: Dictionary = {
 	REGION_ROLE_HIGH_2: 2,
 	REGION_ROLE_BOSS: 3,
 }
+const REGION_LAYOUT_SHAPE_ALGORITHMS: Array[String] = [
+	"rectangle",
+	"rounded_rectangle",
+	"noisy_ellipse",
+]
+const REGION_TRAP_KINDS: Array[String] = [
+	"spike",
+	"explosive_ore_chain",
+	"arrow_slit",
+	"mimic_ore",
+	"pressure_plate",
+]
 
 
 class GenerationIssue:
@@ -132,6 +144,7 @@ class MapConfig:
 
 	var layout_mode: String = LAYOUT_MODE_LEGACY_RADIAL
 	var region_layout: Dictionary = {}
+	var region_generation: Dictionary = {}
 	var validation_issues: Array[Dictionary] = []
 	var width: int = 64
 	var height: int = 64
@@ -288,7 +301,52 @@ class MapConfig:
 			1.0
 		)
 		region_layout = region_layout.duplicate(true)
+		region_generation = region_generation.duplicate(true)
 		validation_issues = validation_issues.duplicate(true)
+
+	func deep_clone() -> MapConfig:
+		var copied: MapConfig = MapConfig.new()
+		for property_info_value: Variant in get_property_list():
+			if not (property_info_value is Dictionary):
+				continue
+			var property_info: Dictionary = property_info_value as Dictionary
+			if (int(property_info.get("usage", 0)) & PROPERTY_USAGE_SCRIPT_VARIABLE) == 0:
+				continue
+			var property_name: StringName = StringName(str(property_info.get("name", "")))
+			if property_name.is_empty():
+				continue
+			copied.set(property_name, _deep_duplicate_config_value(get(property_name)))
+		for metadata_name: StringName in get_meta_list():
+			copied.set_meta(metadata_name, _deep_duplicate_config_value(get_meta(metadata_name)))
+		return copied
+
+	func get_region_generation_snapshot() -> Dictionary:
+		return region_generation.duplicate(true)
+
+	func try_get_region_layout_profile(profile_id: String) -> Dictionary:
+		return _try_get_region_profile("layout_profiles", profile_id)
+
+	func try_get_region_content_profile(profile_id: String) -> Dictionary:
+		return _try_get_region_profile("content_profiles", profile_id)
+
+	func _try_get_region_profile(collection_name: String, profile_id: String) -> Dictionary:
+		var profiles_value: Variant = region_generation.get(collection_name, [])
+		if not (profiles_value is Array):
+			return {}
+		for profile_value: Variant in profiles_value as Array:
+			if not (profile_value is Dictionary):
+				continue
+			var profile: Dictionary = profile_value as Dictionary
+			if str(profile.get("id", "")) == profile_id:
+				return profile.duplicate(true)
+		return {}
+
+	func _deep_duplicate_config_value(value: Variant) -> Variant:
+		if value is Dictionary:
+			return (value as Dictionary).duplicate(true)
+		if value is Array:
+			return (value as Array).duplicate(true)
+		return value
 
 	func get_validation_issues() -> Array[Dictionary]:
 		return validation_issues.duplicate(true)
@@ -1276,6 +1334,7 @@ class MapData:
 	var grid: Array[Array] = []
 	var poi_centers: Array[Dictionary] = []
 	var poi_instances: Array[Dictionary] = []
+	var mineral_sites: Array[Dictionary] = []
 	var player_spawn_points: Array[Dictionary] = []
 	var extraction_sites: Array[Dictionary] = []
 	var monster_sites: Array[Dictionary] = []
@@ -1354,6 +1413,8 @@ class MapData:
 			copied.poi_centers.append(center_data.duplicate(true))
 		for poi_instance: Dictionary in poi_instances:
 			copied.poi_instances.append(poi_instance.duplicate(true))
+		for mineral_site: Dictionary in mineral_sites:
+			copied.mineral_sites.append(mineral_site.duplicate(true))
 		for spawn_point: Dictionary in player_spawn_points:
 			copied.player_spawn_points.append(spawn_point.duplicate(true))
 		for extraction_site: Dictionary in extraction_sites:

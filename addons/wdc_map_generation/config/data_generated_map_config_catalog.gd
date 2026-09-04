@@ -10,6 +10,31 @@ const DEFAULT_CONFIG_BASENAME: String = "default_generated_map"
 
 const GENERATED_MAP_TYPES_SCRIPT = preload("../core/generated_map_types.gd")
 const WdcMapGenerationTypes = GENERATED_MAP_TYPES_SCRIPT
+const REGION_CONTENT_GROUP_SPECS: Dictionary = {
+	"minerals": {
+		"count_unit": "site",
+		"entry_key": "cluster_type_id",
+		"reference_kind": "mineral",
+		"uses_value_cost": true,
+	},
+	"pois": {"count_unit": "instance", "entry_key": "template_id", "reference_kind": "poi"},
+	"room_contents": {
+		"count_unit": "placement_site",
+		"entry_key": "content_kind",
+		"reference_kind": "room_content",
+		"uses_value_cost": true,
+	},
+	"traps": {"count_unit": "instance", "entry_key": "trap_kind", "reference_kind": "trap"},
+	"monster_sites": {"count_unit": "spawn_site", "entry_key": "spawn_template_id", "reference_kind": "spawn"},
+	"nests": {"count_unit": "instance", "entry_key": "nest_template_id", "reference_kind": "nest"},
+	"camps": {
+		"count_unit": "encounter",
+		"entry_key": "camp_id",
+		"reference_kind": "camp",
+		"uses_value_cost": true,
+	},
+}
+const REGION_ROOM_CONTENT_KINDS: Array[String] = ["monster_pack", "nest", "camp"]
 
 
 static func get_config_directory_path() -> String:
@@ -148,6 +173,7 @@ static func _parse_and_normalize_config_into(
 	var raw_config: Dictionary = (raw_config_value as Dictionary).duplicate(true)
 	var layout_mode: String = WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL
 	var normalized_region_layout: Dictionary = {}
+	var normalized_region_generation: Dictionary = {}
 	# 必须先在原始 JSON 上判定字段是否出现；任何默认值注入都发生在这之后。
 	if raw_config.has("region_layout"):
 		var region_layout_value: Variant = raw_config.get("region_layout")
@@ -191,13 +217,26 @@ static func _parse_and_normalize_config_into(
 						raw_region_layout,
 						issues
 					)
+					normalized_region_generation = _normalize_region_generation(
+						raw_config,
+						normalized_region_layout,
+						issues
+					)
+					_validate_and_normalize_core_poi_metadata(
+						raw_config,
+						normalized_region_layout,
+						issues
+					)
 	if not issues.is_empty():
 		target_config.layout_mode = layout_mode
+		target_config.region_layout = {}
+		target_config.region_generation = {}
 		target_config.set_validation_issues(issues)
 		result.issues = issues.duplicate(true)
 		return result
 	target_config.layout_mode = layout_mode
 	target_config.region_layout = normalized_region_layout.duplicate(true)
+	target_config.region_generation = normalized_region_generation.duplicate(true)
 	target_config.set_validation_issues([])
 	if layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
 		target_config.map_layers.clear()
@@ -1177,6 +1216,915 @@ static func _normalize_region_slot(
 	return normalized
 
 
+static func _normalize_region_generation(
+	raw_config: Dictionary,
+	normalized_region_layout: Dictionary,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	if not raw_config.has("region_generation"):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"region_generation",
+			"",
+			"pve_four_region_v1 必须声明 region_generation"
+		))
+		return {}
+	var generation_value: Variant = raw_config.get("region_generation")
+	if not (generation_value is Dictionary):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"region_generation",
+			"",
+			"region_generation 必须是对象"
+		))
+		return {}
+	var raw_generation: Dictionary = generation_value as Dictionary
+	_append_unknown_region_profile_fields(
+		raw_generation,
+		["layout_profiles", "content_profiles"],
+		"region_generation",
+		issues
+	)
+	var reference_counts: Dictionary = _build_region_content_reference_counts(raw_config)
+	var normalized_layout_profiles: Array[Dictionary] = _normalize_region_layout_profiles(
+		raw_generation.get("layout_profiles", null),
+		issues
+	)
+	var normalized_content_profiles: Array[Dictionary] = _normalize_region_content_profiles(
+		raw_generation.get("content_profiles", null),
+		reference_counts,
+		issues
+	)
+	_validate_region_slot_profile_references(
+		normalized_region_layout,
+		normalized_layout_profiles,
+		normalized_content_profiles,
+		issues
+	)
+	return {
+		"layout_profiles": normalized_layout_profiles,
+		"content_profiles": normalized_content_profiles,
+	}
+
+
+static func _normalize_region_layout_profiles(
+	profiles_value: Variant,
+	issues: Array[Dictionary]
+) -> Array[Dictionary]:
+	var normalized: Array[Dictionary] = []
+	var base_path: String = "region_generation.layout_profiles"
+	if not (profiles_value is Array):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			base_path,
+			"",
+			"layout_profiles 必须是非空数组"
+		))
+		return normalized
+	var profiles: Array = profiles_value as Array
+	if profiles.is_empty():
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			base_path,
+			"",
+			"layout_profiles 必须至少包含一个 profile"
+		))
+		return normalized
+	var seen_ids: Dictionary = {}
+	for profile_index: int in range(profiles.size()):
+		var profile_path: String = "%s[%d]" % [base_path, profile_index]
+		var profile_value: Variant = profiles[profile_index]
+		if not (profile_value is Dictionary):
+			issues.append(_config_issue(
+				"invalid_region_profile",
+				profile_path,
+				"",
+				"layout profile 必须是对象"
+			))
+			continue
+		var profile: Dictionary = _normalize_region_layout_profile(
+			profile_value as Dictionary,
+			profile_path,
+			issues
+		)
+		var profile_id: String = str(profile.get("id", ""))
+		if not profile_id.is_empty():
+			if seen_ids.has(profile_id):
+				issues.append(_config_issue(
+					"duplicate_region_profile_id",
+					"%s.id" % profile_path,
+					"",
+					"layout profile id 重复：%s" % profile_id
+				))
+			else:
+				seen_ids[profile_id] = profile_index
+		normalized.append(profile)
+	return normalized
+
+
+static func _normalize_region_layout_profile(
+	raw_profile: Dictionary,
+	profile_path: String,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	_append_unknown_region_profile_fields(
+		raw_profile,
+		[
+			"id",
+			"shape_algorithm",
+			"min_size_cells",
+			"max_size_cells",
+			"edge_margin_cells",
+			"regular_moat_cells",
+			"core_poi_padding_cells",
+			"seed_salt",
+			"max_attempts",
+		],
+		profile_path,
+		issues
+	)
+	var profile_id: String = _read_region_profile_string(
+		raw_profile,
+		"id",
+		"%s.id" % profile_path,
+		issues
+	)
+	var shape_algorithm: String = _read_region_profile_string(
+		raw_profile,
+		"shape_algorithm",
+		"%s.shape_algorithm" % profile_path,
+		issues
+	)
+	if (
+		not shape_algorithm.is_empty()
+		and not WdcMapGenerationTypes.REGION_LAYOUT_SHAPE_ALGORITHMS.has(shape_algorithm)
+	):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.shape_algorithm" % profile_path,
+			"",
+			"不支持的四区域形状算法：%s" % shape_algorithm
+		))
+	var min_size: Dictionary = _normalize_region_profile_size(
+		raw_profile.get("min_size_cells", null),
+		"%s.min_size_cells" % profile_path,
+		issues
+	)
+	var max_size: Dictionary = _normalize_region_profile_size(
+		raw_profile.get("max_size_cells", null),
+		"%s.max_size_cells" % profile_path,
+		issues
+	)
+	if int(min_size.get("x", 1)) > int(max_size.get("x", 1)):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.min_size_cells.x" % profile_path,
+			"",
+			"min_size_cells.x 不得大于 max_size_cells.x"
+		))
+	if int(min_size.get("y", 1)) > int(max_size.get("y", 1)):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.min_size_cells.y" % profile_path,
+			"",
+			"min_size_cells.y 不得大于 max_size_cells.y"
+		))
+	return {
+		"id": profile_id,
+		"shape_algorithm": shape_algorithm,
+		"min_size_cells": min_size,
+		"max_size_cells": max_size,
+		"edge_margin_cells": _read_region_profile_integer(
+			raw_profile,
+			"edge_margin_cells",
+			"%s.edge_margin_cells" % profile_path,
+			1,
+			true,
+			issues
+		),
+		"regular_moat_cells": _read_region_profile_integer(
+			raw_profile,
+			"regular_moat_cells",
+			"%s.regular_moat_cells" % profile_path,
+			1,
+			true,
+			issues
+		),
+		"core_poi_padding_cells": _read_region_profile_integer(
+			raw_profile,
+			"core_poi_padding_cells",
+			"%s.core_poi_padding_cells" % profile_path,
+			0,
+			true,
+			issues
+		),
+		"seed_salt": _read_region_profile_integer(
+			raw_profile,
+			"seed_salt",
+			"%s.seed_salt" % profile_path,
+			0,
+			false,
+			issues
+		),
+		"max_attempts": _read_region_profile_integer(
+			raw_profile,
+			"max_attempts",
+			"%s.max_attempts" % profile_path,
+			1,
+			true,
+			issues
+		),
+	}
+
+
+static func _normalize_region_profile_size(
+	size_value: Variant,
+	path: String,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	if not (size_value is Dictionary):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			path,
+			"",
+			"区域尺寸必须是包含 x/y 的对象"
+		))
+		return {"x": 1, "y": 1}
+	var size_dict: Dictionary = size_value as Dictionary
+	_append_unknown_region_profile_fields(size_dict, ["x", "y"], path, issues)
+	return {
+		"x": _read_region_profile_integer(size_dict, "x", "%s.x" % path, 1, true, issues),
+		"y": _read_region_profile_integer(size_dict, "y", "%s.y" % path, 1, true, issues),
+	}
+
+
+static func _normalize_region_content_profiles(
+	profiles_value: Variant,
+	reference_counts: Dictionary,
+	issues: Array[Dictionary]
+) -> Array[Dictionary]:
+	var normalized: Array[Dictionary] = []
+	var base_path: String = "region_generation.content_profiles"
+	if not (profiles_value is Array):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			base_path,
+			"",
+			"content_profiles 必须是非空数组"
+		))
+		return normalized
+	var profiles: Array = profiles_value as Array
+	if profiles.is_empty():
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			base_path,
+			"",
+			"content_profiles 必须至少包含一个 profile"
+		))
+		return normalized
+	var seen_ids: Dictionary = {}
+	for profile_index: int in range(profiles.size()):
+		var profile_path: String = "%s[%d]" % [base_path, profile_index]
+		var profile_value: Variant = profiles[profile_index]
+		if not (profile_value is Dictionary):
+			issues.append(_config_issue(
+				"invalid_region_profile",
+				profile_path,
+				"",
+				"content profile 必须是对象"
+			))
+			continue
+		var profile: Dictionary = _normalize_region_content_profile(
+			profile_value as Dictionary,
+			profile_path,
+			reference_counts,
+			issues
+		)
+		var profile_id: String = str(profile.get("id", ""))
+		if not profile_id.is_empty():
+			if seen_ids.has(profile_id):
+				issues.append(_config_issue(
+					"duplicate_region_profile_id",
+					"%s.id" % profile_path,
+					"",
+					"content profile id 重复：%s" % profile_id
+				))
+			else:
+				seen_ids[profile_id] = profile_index
+		normalized.append(profile)
+	return normalized
+
+
+static func _normalize_region_content_profile(
+	raw_profile: Dictionary,
+	profile_path: String,
+	reference_counts: Dictionary,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var allowed_keys: Array[String] = [
+		"id",
+		"wall_durability",
+		"mineral_value_budget",
+		"reward_value_budget",
+	]
+	for group_name_value: Variant in REGION_CONTENT_GROUP_SPECS.keys():
+		allowed_keys.append(str(group_name_value))
+	_append_unknown_region_profile_fields(raw_profile, allowed_keys, profile_path, issues)
+	var normalized: Dictionary = {
+		"id": _read_region_profile_string(raw_profile, "id", "%s.id" % profile_path, issues),
+		"wall_durability": _normalize_region_wall_durability(
+			raw_profile.get("wall_durability", null),
+			"%s.wall_durability" % profile_path,
+			issues
+		),
+		"mineral_value_budget": _read_region_profile_integer(
+			raw_profile,
+			"mineral_value_budget",
+			"%s.mineral_value_budget" % profile_path,
+			0,
+			true,
+			issues
+		),
+		"reward_value_budget": _read_region_profile_integer(
+			raw_profile,
+			"reward_value_budget",
+			"%s.reward_value_budget" % profile_path,
+			0,
+			true,
+			issues
+		),
+	}
+	for group_name_value: Variant in REGION_CONTENT_GROUP_SPECS.keys():
+		var group_name: String = str(group_name_value)
+		normalized[group_name] = _normalize_region_content_count_group(
+			raw_profile.get(group_name, null),
+			group_name,
+			"%s.%s" % [profile_path, group_name],
+			reference_counts,
+			issues
+		)
+	return normalized
+
+
+static func _normalize_region_wall_durability(
+	value: Variant,
+	path: String,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var allowed_keys: Array[String] = [
+		"ordinary_max_hit_points",
+		"mineral_max_hit_points",
+		"poi_max_hit_points",
+	]
+	if not (value is Dictionary):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			path,
+			"",
+			"wall_durability 必须是对象"
+		))
+		return {
+			"ordinary_max_hit_points": 1,
+			"mineral_max_hit_points": 1,
+			"poi_max_hit_points": 1,
+		}
+	var durability: Dictionary = value as Dictionary
+	_append_unknown_region_profile_fields(durability, allowed_keys, path, issues)
+	var normalized: Dictionary = {}
+	for key: String in allowed_keys:
+		normalized[key] = _read_region_profile_integer(
+			durability,
+			key,
+			"%s.%s" % [path, key],
+			1,
+			true,
+			issues
+		)
+	return normalized
+
+
+static func _normalize_region_content_count_group(
+	value: Variant,
+	group_name: String,
+	path: String,
+	reference_counts: Dictionary,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var spec: Dictionary = REGION_CONTENT_GROUP_SPECS[group_name] as Dictionary
+	var expected_unit: String = str(spec.get("count_unit", ""))
+	var normalized: Dictionary = {
+		"count_unit": expected_unit,
+		"target_count": 0,
+		"minimum_count": 0,
+		"entries": [],
+	}
+	if not (value is Dictionary):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			path,
+			"",
+			"区域内容计数配置必须是对象"
+		))
+		return normalized
+	var group: Dictionary = value as Dictionary
+	_append_unknown_region_profile_fields(
+		group,
+		["count_unit", "target_count", "minimum_count", "entries"],
+		path,
+		issues
+	)
+	var count_unit: String = _read_region_profile_string(
+		group,
+		"count_unit",
+		"%s.count_unit" % path,
+		issues
+	)
+	if not count_unit.is_empty() and count_unit != expected_unit:
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.count_unit" % path,
+			"",
+			"%s 的固定计数单位必须是 %s" % [group_name, expected_unit]
+		))
+	var target_count: int = _read_region_profile_integer(
+		group,
+		"target_count",
+		"%s.target_count" % path,
+		0,
+		true,
+		issues
+	)
+	var minimum_count: int = _read_region_profile_integer(
+		group,
+		"minimum_count",
+		"%s.minimum_count" % path,
+		0,
+		true,
+		issues
+	)
+	if minimum_count > target_count:
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.minimum_count" % path,
+			"",
+			"minimum_count 不得大于 target_count"
+		))
+	var normalized_entries: Array[Dictionary] = []
+	var entries_value: Variant = group.get("entries", null)
+	if not (entries_value is Array):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.entries" % path,
+			"",
+			"entries 必须是数组"
+		))
+	else:
+		var entries: Array = entries_value as Array
+		for entry_index: int in range(entries.size()):
+			var entry_path: String = "%s.entries[%d]" % [path, entry_index]
+			var entry_value: Variant = entries[entry_index]
+			if not (entry_value is Dictionary):
+				issues.append(_config_issue(
+					"invalid_region_profile",
+					entry_path,
+					"",
+					"区域内容 entry 必须是对象"
+				))
+				continue
+			normalized_entries.append(_normalize_region_content_entry(
+				entry_value as Dictionary,
+				group_name,
+				entry_path,
+				reference_counts,
+				issues
+			))
+		if target_count > 0 and entries.is_empty():
+			issues.append(_config_issue(
+				"invalid_region_profile",
+				"%s.entries" % path,
+				"",
+				"target_count 大于零时必须提供至少一个允许 entry"
+			))
+	normalized["count_unit"] = expected_unit
+	normalized["target_count"] = target_count
+	normalized["minimum_count"] = minimum_count
+	normalized["entries"] = normalized_entries
+	return normalized
+
+
+static func _normalize_region_content_entry(
+	raw_entry: Dictionary,
+	group_name: String,
+	path: String,
+	reference_counts: Dictionary,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var spec: Dictionary = REGION_CONTENT_GROUP_SPECS[group_name] as Dictionary
+	var entry_key: String = str(spec.get("entry_key", ""))
+	var reference_kind: String = str(spec.get("reference_kind", ""))
+	var uses_value_cost: bool = bool(spec.get("uses_value_cost", false))
+	var allowed_keys: Array[String] = [entry_key, "weight"]
+	if uses_value_cost:
+		allowed_keys.append("value_cost")
+	_append_unknown_region_profile_fields(raw_entry, allowed_keys, path, issues)
+	var entry_id: String = _read_region_profile_string(
+		raw_entry,
+		entry_key,
+		"%s.%s" % [path, entry_key],
+		issues
+	)
+	var weight_value: Variant = raw_entry.get("weight", null)
+	var weight_is_number: bool = (
+		typeof(weight_value) == TYPE_INT or typeof(weight_value) == TYPE_FLOAT
+	)
+	if not weight_is_number or float(weight_value) <= 0.0:
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.weight" % path,
+			"",
+			"entry weight 必须是正数"
+		))
+	var normalized: Dictionary = {
+		entry_key: entry_id,
+		"weight": float(weight_value) if weight_is_number else 0.0,
+	}
+	if uses_value_cost:
+		normalized["value_cost"] = _read_region_profile_integer(
+			raw_entry,
+			"value_cost",
+			"%s.value_cost" % path,
+			1,
+			true,
+			issues
+		)
+	if entry_id.is_empty():
+		return normalized
+	if reference_kind == "room_content":
+		if not REGION_ROOM_CONTENT_KINDS.has(entry_id):
+			_append_unknown_region_content_reference(entry_id, "%s.%s" % [path, entry_key], issues)
+		return normalized
+	if reference_kind == "trap":
+		if not WdcMapGenerationTypes.REGION_TRAP_KINDS.has(entry_id):
+			_append_unknown_region_content_reference(entry_id, "%s.%s" % [path, entry_key], issues)
+		return normalized
+	var counts: Dictionary = reference_counts.get(reference_kind, {}) as Dictionary
+	var match_count: int = int(counts.get(entry_id, 0))
+	if match_count == 0:
+		_append_unknown_region_content_reference(entry_id, "%s.%s" % [path, entry_key], issues)
+	elif match_count > 1:
+		issues.append(_config_issue(
+			"ambiguous_region_content_reference",
+			"%s.%s" % [path, entry_key],
+			"",
+			"区域内容模板引用匹配到多个同 id 定义：%s" % entry_id
+		))
+	return normalized
+
+
+static func _append_unknown_region_content_reference(
+	reference_id: String,
+	path: String,
+	issues: Array[Dictionary]
+) -> void:
+	issues.append(_config_issue(
+		"unknown_region_content_reference",
+		path,
+		"",
+		"区域内容模板引用不存在：%s" % reference_id
+	))
+
+
+static func _build_region_content_reference_counts(raw_config: Dictionary) -> Dictionary:
+	var minerals: Dictionary = raw_config.get("minerals", {}) as Dictionary
+	var poi_generation: Dictionary = raw_config.get("poi_generation", {}) as Dictionary
+	var monster_generation: Dictionary = raw_config.get("monster_generation", {}) as Dictionary
+	var mineral_counts: Dictionary = {}
+	_append_id_counts(mineral_counts, minerals.get("cluster_types", []), "id")
+	var poi_counts: Dictionary = {}
+	_append_id_counts(poi_counts, poi_generation.get("poi_types", []), "id")
+	var spawn_counts: Dictionary = {}
+	_append_id_counts(
+		spawn_counts,
+		monster_generation.get("isolated_spawn_templates", []),
+		"id"
+	)
+	var nest_counts: Dictionary = {}
+	_append_id_counts(nest_counts, monster_generation.get("nest_templates", []), "id")
+	return {
+		"mineral": mineral_counts,
+		"poi": poi_counts,
+		"spawn": spawn_counts,
+		"nest": nest_counts,
+		"camp": _collect_camp_id_counts(poi_generation.get("poi_types", [])),
+	}
+
+
+static func _append_id_counts(target: Dictionary, values: Variant, id_key: String) -> void:
+	if not (values is Array):
+		return
+	for value: Variant in values as Array:
+		if not (value is Dictionary):
+			continue
+		var id_value: Variant = _strict_config_string((value as Dictionary).get(id_key, null))
+		if not (id_value is String) or (id_value as String).is_empty():
+			continue
+		var entry_id: String = id_value as String
+		target[entry_id] = int(target.get(entry_id, 0)) + 1
+
+
+static func _collect_camp_id_counts(poi_templates_value: Variant) -> Dictionary:
+	var counts: Dictionary = {}
+	if not (poi_templates_value is Array):
+		return counts
+	for poi_value: Variant in poi_templates_value as Array:
+		if not (poi_value is Dictionary):
+			continue
+		var content_value: Variant = (poi_value as Dictionary).get("content", null)
+		if not (content_value is Dictionary):
+			continue
+		var content: Dictionary = content_value as Dictionary
+		for roll_key: String in ["main_room_roll", "sub_room_roll"]:
+			var roll_value: Variant = content.get(roll_key, null)
+			if not (roll_value is Dictionary):
+				continue
+			_append_id_counts(
+				counts,
+				(roll_value as Dictionary).get("camp_entries", []),
+				"id"
+			)
+	return counts
+
+
+static func _validate_region_slot_profile_references(
+	normalized_region_layout: Dictionary,
+	layout_profiles: Array[Dictionary],
+	content_profiles: Array[Dictionary],
+	issues: Array[Dictionary]
+) -> void:
+	var layout_counts: Dictionary = {}
+	_append_id_counts(layout_counts, layout_profiles, "id")
+	var content_counts: Dictionary = {}
+	_append_id_counts(content_counts, content_profiles, "id")
+	for role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var slot_value: Variant = normalized_region_layout.get(role, null)
+		if not (slot_value is Dictionary):
+			continue
+		var slot: Dictionary = slot_value as Dictionary
+		var content_profile_id: String = str(slot.get("content_profile_id", ""))
+		if not content_profile_id.is_empty() and int(content_counts.get(content_profile_id, 0)) == 0:
+			issues.append(_config_issue(
+				"unknown_region_content_profile",
+				"region_layout.%s.content_profile_id" % role,
+				role,
+				"区域引用了不存在的 content profile：%s" % content_profile_id
+			))
+		if role == WdcMapGenerationTypes.REGION_ROLE_REGULAR:
+			continue
+		var layout_profile_id: String = str(slot.get("layout_profile_id", ""))
+		if not layout_profile_id.is_empty() and int(layout_counts.get(layout_profile_id, 0)) == 0:
+			issues.append(_config_issue(
+				"unknown_region_layout_profile",
+				"region_layout.%s.layout_profile_id" % role,
+				role,
+				"区域引用了不存在的 layout profile：%s" % layout_profile_id
+			))
+
+
+static func _read_region_profile_string(
+	source: Dictionary,
+	key: String,
+	path: String,
+	issues: Array[Dictionary]
+) -> String:
+	var value: Variant = _strict_config_string(source.get(key, null))
+	if value == null or (value as String).is_empty():
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			path,
+			"",
+			"profile 字段必须是非空字符串"
+		))
+		return ""
+	return value as String
+
+
+static func _read_region_profile_integer(
+	source: Dictionary,
+	key: String,
+	path: String,
+	minimum_value: int,
+	has_minimum: bool,
+	issues: Array[Dictionary]
+) -> int:
+	var value: Variant = source.get(key, null)
+	if not _is_integer_number(value):
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			path,
+			"",
+			"profile 字段必须是整数"
+		))
+		return minimum_value if has_minimum else 0
+	var normalized: int = int(value)
+	if has_minimum and normalized < minimum_value:
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			path,
+			"",
+			"profile 字段不得小于 %d" % minimum_value
+		))
+	return normalized
+
+
+static func _is_integer_number(value: Variant) -> bool:
+	return (
+		(typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT)
+		and float(value) == floor(float(value))
+	)
+
+
+static func _append_unknown_region_profile_fields(
+	source: Dictionary,
+	allowed_keys: Array[String],
+	base_path: String,
+	issues: Array[Dictionary]
+) -> void:
+	for key_value: Variant in source.keys():
+		var key: String = str(key_value)
+		if allowed_keys.has(key):
+			continue
+		issues.append(_config_issue(
+			"invalid_region_profile",
+			"%s.%s" % [base_path, key],
+			"",
+			"region profile 包含未声明字段"
+		))
+
+
+static func _validate_and_normalize_core_poi_metadata(
+	raw_config: Dictionary,
+	normalized_region_layout: Dictionary,
+	issues: Array[Dictionary]
+) -> void:
+	var poi_generation_value: Variant = raw_config.get("poi_generation", null)
+	if not (poi_generation_value is Dictionary):
+		return
+	var poi_generation: Dictionary = poi_generation_value as Dictionary
+	var poi_types_value: Variant = poi_generation.get("poi_types", null)
+	if not (poi_types_value is Array):
+		return
+	var boss_slot: Dictionary = normalized_region_layout.get(
+		WdcMapGenerationTypes.REGION_ROLE_BOSS,
+		{}
+	) as Dictionary
+	var boss_core: Dictionary = boss_slot.get("core_poi", {}) as Dictionary
+	var boss_template_id: String = str(boss_core.get("template_id", ""))
+	var boss_template_match_count: int = 0
+	var boss_metadata_count: int = 0
+	var poi_types: Array = poi_types_value as Array
+	for poi_index: int in range(poi_types.size()):
+		var poi_value: Variant = poi_types[poi_index]
+		if not (poi_value is Dictionary):
+			continue
+		var poi_template: Dictionary = poi_value as Dictionary
+		var template_id_value: Variant = _strict_config_string(poi_template.get("id", null))
+		var template_id: String = template_id_value as String if template_id_value is String else ""
+		if template_id == boss_template_id:
+			boss_template_match_count += 1
+		if not poi_template.has("core_metadata"):
+			continue
+		var metadata_path: String = "poi_generation.poi_types[%d].core_metadata" % poi_index
+		var normalized_metadata: Dictionary = _normalize_core_poi_metadata(
+			poi_template.get("core_metadata"),
+			metadata_path,
+			issues
+		)
+		poi_template["core_metadata"] = normalized_metadata
+		if template_id == boss_template_id:
+			boss_metadata_count += 1
+	if boss_template_match_count == 1 and boss_metadata_count == 0:
+		issues.append(_config_issue(
+			"invalid_core_poi_metadata",
+			"region_layout.boss.core_poi.template_id",
+			WdcMapGenerationTypes.REGION_ROLE_BOSS,
+			"BOSS 核心 POI 模板必须声明 core_metadata"
+		))
+
+
+static func _normalize_core_poi_metadata(
+	value: Variant,
+	path: String,
+	issues: Array[Dictionary]
+) -> Dictionary:
+	var normalized: Dictionary = {
+		"reward_gate_cells": [],
+		"reward_object_cells": [],
+		"reward_recipe_id": "",
+	}
+	if not (value is Dictionary):
+		issues.append(_config_issue(
+			"invalid_core_poi_metadata",
+			path,
+			"",
+			"core_metadata 必须是对象"
+		))
+		return normalized
+	var metadata: Dictionary = value as Dictionary
+	for key_value: Variant in metadata.keys():
+		var key: String = str(key_value)
+		if ["reward_gate_cells", "reward_object_cells", "reward_recipe_id"].has(key):
+			continue
+		issues.append(_config_issue(
+			"invalid_core_poi_metadata",
+			"%s.%s" % [path, key],
+			"",
+			"core_metadata 包含未声明字段"
+		))
+	normalized["reward_gate_cells"] = _normalize_core_metadata_cells(
+		metadata.get("reward_gate_cells", null),
+		"%s.reward_gate_cells" % path,
+		issues
+	)
+	normalized["reward_object_cells"] = _normalize_core_metadata_cells(
+		metadata.get("reward_object_cells", null),
+		"%s.reward_object_cells" % path,
+		issues
+	)
+	var reward_recipe_value: Variant = _strict_config_string(
+		metadata.get("reward_recipe_id", null)
+	)
+	if reward_recipe_value == null or (reward_recipe_value as String).is_empty():
+		issues.append(_config_issue(
+			"invalid_core_poi_metadata",
+			"%s.reward_recipe_id" % path,
+			"",
+			"reward_recipe_id 必须是非空字符串"
+		))
+	else:
+		normalized["reward_recipe_id"] = reward_recipe_value as String
+	return normalized
+
+
+static func _normalize_core_metadata_cells(
+	value: Variant,
+	path: String,
+	issues: Array[Dictionary]
+) -> Array[Dictionary]:
+	var normalized: Array[Dictionary] = []
+	if not (value is Array) or (value as Array).is_empty():
+		issues.append(_config_issue(
+			"invalid_core_poi_metadata",
+			path,
+			"",
+			"奖励位置必须是非空 cell 数组"
+		))
+		return normalized
+	var cells: Array = value as Array
+	for cell_index: int in range(cells.size()):
+		var cell_path: String = "%s[%d]" % [path, cell_index]
+		var cell_value: Variant = cells[cell_index]
+		if not (cell_value is Dictionary):
+			issues.append(_config_issue(
+				"invalid_core_poi_metadata",
+				cell_path,
+				"",
+				"奖励位置必须是包含 x/y 的对象"
+			))
+			continue
+		var cell: Dictionary = cell_value as Dictionary
+		for key_value: Variant in cell.keys():
+			var key: String = str(key_value)
+			if key == "x" or key == "y":
+				continue
+			issues.append(_config_issue(
+				"invalid_core_poi_metadata",
+				"%s.%s" % [cell_path, key],
+				"",
+				"奖励位置只允许 x/y"
+			))
+		var x_value: Variant = cell.get("x", null)
+		var y_value: Variant = cell.get("y", null)
+		if not _is_integer_number(x_value):
+			issues.append(_config_issue(
+				"invalid_core_poi_metadata",
+				"%s.x" % cell_path,
+				"",
+				"奖励位置 x 必须是整数"
+			))
+		if not _is_integer_number(y_value):
+			issues.append(_config_issue(
+				"invalid_core_poi_metadata",
+				"%s.y" % cell_path,
+				"",
+				"奖励位置 y 必须是整数"
+			))
+		normalized.append({
+			"x": int(x_value) if _is_integer_number(x_value) else 0,
+			"y": int(y_value) if _is_integer_number(y_value) else 0,
+		})
+	return normalized
+
+
 static func _append_unknown_field_issues(
 	source: Dictionary,
 	allowed_keys: Array[String],
@@ -1262,6 +2210,7 @@ static func _build_normalized_document(
 	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
 		normalized["schema_version"] = WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION
 		normalized["region_layout"] = _serialize_region_layout(config.region_layout)
+		normalized["region_generation"] = config.get_region_generation_snapshot()
 		normalized.erase("map_layers")
 		normalized.erase("boss_generation")
 		var pve_map: Dictionary = (
@@ -1288,6 +2237,7 @@ static func _build_normalized_document(
 		normalized["map"] = pve_map
 		return normalized
 	normalized.erase("region_layout")
+	normalized.erase("region_generation")
 	normalized["map_layers"] = config.map_layers.duplicate(true)
 	var legacy_map: Dictionary = (
 		(normalized.get("map", {}) as Dictionary).duplicate(true)

@@ -11,6 +11,23 @@
           "schema_version": { "const": 2 }
         }
       }
+    },
+    {
+      "if": {
+        "required": ["region_layout"],
+        "properties": {
+          "region_layout": {
+            "type": "object",
+            "required": ["mode"],
+            "properties": {
+              "mode": { "const": "pve_four_region_v1" }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["region_generation"]
+      }
     }
   ],
   "properties": {
@@ -97,13 +114,293 @@
       }
     },
     "region_layout": { "$ref": "#/$defs/pveFourRegionLayout" },
+    "region_generation": { "$ref": "#/$defs/regionGeneration" },
     "terrain": { "type": "object" },
     "minerals": { "type": "object" },
-    "poi_generation": { "type": "object" },
+    "poi_generation": {
+      "type": "object",
+      "properties": {
+        "poi_types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "core_metadata": { "$ref": "#/$defs/corePoiMetadata" }
+            }
+          }
+        }
+      }
+    },
     "monster_generation": { "type": "object" },
     "debug": { "type": "object" }
   },
   "$defs": {
+    "cellOffset": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "corePoiMetadata": {
+      "type": "object",
+      "required": ["reward_gate_cells", "reward_object_cells", "reward_recipe_id"],
+      "properties": {
+        "reward_gate_cells": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/cellOffset" }
+        },
+        "reward_object_cells": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/cellOffset" }
+        },
+        "reward_recipe_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "sizeCells": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 1 },
+        "y": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "regionLayoutProfile": {
+      "type": "object",
+      "required": [
+        "id",
+        "shape_algorithm",
+        "min_size_cells",
+        "max_size_cells",
+        "edge_margin_cells",
+        "regular_moat_cells",
+        "core_poi_padding_cells",
+        "seed_salt",
+        "max_attempts"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "shape_algorithm": {
+          "enum": ["rectangle", "rounded_rectangle", "noisy_ellipse"]
+        },
+        "min_size_cells": { "$ref": "#/$defs/sizeCells" },
+        "max_size_cells": { "$ref": "#/$defs/sizeCells" },
+        "edge_margin_cells": { "type": "integer", "minimum": 1 },
+        "regular_moat_cells": { "type": "integer", "minimum": 1 },
+        "core_poi_padding_cells": { "type": "integer", "minimum": 0 },
+        "seed_salt": { "type": "integer" },
+        "max_attempts": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "mineralProfileEntry": {
+      "type": "object",
+      "required": ["cluster_type_id", "weight", "value_cost"],
+      "properties": {
+        "cluster_type_id": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "value_cost": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "poiProfileEntry": {
+      "type": "object",
+      "required": ["template_id", "weight"],
+      "properties": {
+        "template_id": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "roomContentProfileEntry": {
+      "type": "object",
+      "required": ["content_kind", "weight", "value_cost"],
+      "properties": {
+        "content_kind": { "enum": ["monster_pack", "nest", "camp"] },
+        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "value_cost": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "trapProfileEntry": {
+      "type": "object",
+      "required": ["trap_kind", "weight"],
+      "properties": {
+        "trap_kind": {
+          "enum": ["spike", "explosive_ore_chain", "arrow_slit", "mimic_ore", "pressure_plate"]
+        },
+        "weight": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "monsterSiteProfileEntry": {
+      "type": "object",
+      "required": ["spawn_template_id", "weight"],
+      "properties": {
+        "spawn_template_id": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "nestProfileEntry": {
+      "type": "object",
+      "required": ["nest_template_id", "weight"],
+      "properties": {
+        "nest_template_id": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "campProfileEntry": {
+      "type": "object",
+      "required": ["camp_id", "weight", "value_cost"],
+      "properties": {
+        "camp_id": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "value_cost": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "mineralCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "site" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/mineralProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "poiCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "instance" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/poiProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "roomContentCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "placement_site" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/roomContentProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "trapCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "instance" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/trapProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "monsterSiteCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "spawn_site" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/monsterSiteProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "nestCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "instance" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/nestProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "campCountProfile": {
+      "type": "object",
+      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "properties": {
+        "count_unit": { "const": "encounter" },
+        "target_count": { "type": "integer", "minimum": 0 },
+        "minimum_count": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/campProfileEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "wallDurability": {
+      "type": "object",
+      "required": ["ordinary_max_hit_points", "mineral_max_hit_points", "poi_max_hit_points"],
+      "properties": {
+        "ordinary_max_hit_points": { "type": "integer", "minimum": 1 },
+        "mineral_max_hit_points": { "type": "integer", "minimum": 1 },
+        "poi_max_hit_points": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "regionContentProfile": {
+      "type": "object",
+      "required": [
+        "id",
+        "wall_durability",
+        "mineral_value_budget",
+        "reward_value_budget",
+        "minerals",
+        "pois",
+        "room_contents",
+        "traps",
+        "monster_sites",
+        "nests",
+        "camps"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "wall_durability": { "$ref": "#/$defs/wallDurability" },
+        "mineral_value_budget": { "type": "integer", "minimum": 0 },
+        "reward_value_budget": { "type": "integer", "minimum": 0 },
+        "minerals": { "$ref": "#/$defs/mineralCountProfile" },
+        "pois": { "$ref": "#/$defs/poiCountProfile" },
+        "room_contents": { "$ref": "#/$defs/roomContentCountProfile" },
+        "traps": { "$ref": "#/$defs/trapCountProfile" },
+        "monster_sites": { "$ref": "#/$defs/monsterSiteCountProfile" },
+        "nests": { "$ref": "#/$defs/nestCountProfile" },
+        "camps": { "$ref": "#/$defs/campCountProfile" }
+      },
+      "additionalProperties": false
+    },
+    "regionGeneration": {
+      "type": "object",
+      "required": ["layout_profiles", "content_profiles"],
+      "properties": {
+        "layout_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/regionLayoutProfile" }
+        },
+        "content_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/regionContentProfile" }
+        }
+      },
+      "additionalProperties": false
+    },
     "corePoi": {
       "type": "object",
       "required": ["template_id", "max_center_offset_cells"],
