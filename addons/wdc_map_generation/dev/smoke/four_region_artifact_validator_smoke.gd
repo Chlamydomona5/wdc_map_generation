@@ -102,8 +102,8 @@ func _test_core_artifact_contract(config: Variant, map_data: Variant) -> void:
 		if anchors.size() == 1:
 			_expect(anchors[0].id == "primary", "首版 BOSS descriptor 唯一 anchor 必须名为 primary")
 			_expect(
-				anchors[0].cell == _cell_from_variant(boss_core.get("main_room_center", null)),
-				"primary 必须等于 BOSS 核心 POI 主房中心"
+				anchors[0].cell == _cell_from_variant(boss_core.get("named_anchors", {}).get("primary", boss_core.get("main_room_center", null))),
+				"primary 必须等于 BOSS 核心的具名锚点"
 			)
 		var metadata: Dictionary = boss_core.get("core_metadata", {}) as Dictionary
 		_expect(not str(metadata.get("reward_recipe_id", "")).is_empty(), "BOSS 核心 POI 必须保存奖励配方")
@@ -114,6 +114,16 @@ func _test_core_artifact_contract(config: Variant, map_data: Variant) -> void:
 func _validate_complete_core_footprint(core: Dictionary, role: String) -> void:
 	var footprint: Dictionary = _cell_set(core.get("footprint_cells", []))
 	_expect(not footprint.is_empty(), "%s 核心 POI footprint 不能为空" % role)
+	if str(core.get("layout_kind", "")) == "authored_rooms":
+		var explicit_cells: Dictionary = _cell_set(core.get("floor_cells", []) + core.get("wall_cells", []))
+		_expect(explicit_cells.size() == footprint.size(), "图纸 footprint 必须恰好来自显式地板和墙格")
+		for room: Dictionary in core.get("rooms", []):
+			for key: String in _cell_set(room.get("footprint_cells", [])):
+				_expect(footprint.has(key), "图纸实例的真实占地不能在总 footprint 中丢失")
+		for connection: Dictionary in core.get("connections", []):
+			for key: String in _cell_set(connection.get("corridor_cells", [])):
+				_expect(footprint.has(key), "精确宽度通道必须保留在总 footprint 中")
+		return
 	var interior: Dictionary = {}
 	var room_values: Array = [core.get("main_room", {})]
 	room_values.append_array(core.get("sub_rooms", []) as Array)
@@ -742,16 +752,16 @@ func _test_failed_generation_atomicity(
 	var core_template_id: String = str(
 		(high_1_slot.get("core_poi", {}) as Dictionary).get("template_id", "")
 	)
+	var bundle: Dictionary = impossible_config.get_meta("poi_resource_bundle", {}).duplicate(true)
 	for template: Dictionary in impossible_config.poi_templates:
-		if str(template.get("id", "")) != core_template_id:
-			continue
-		template["main_room"] = {
-			"width_min": 512,
-			"width_max": 512,
-			"height_min": 512,
-			"height_max": 512,
-		}
-		break
+		if str(template.get("id", "")) == core_template_id:
+			for node: Dictionary in bundle.compositions[str(template.composition_id)].nodes:
+				if str(node.id) == "kitchen":
+					# 必需单实例的合法固定偏移超过 POI 搜索边界，不能裁剪或退回旧矩形。
+					node["position"] = {"x": 10000, "y": 10000}
+					node["rotation"] = 0
+			break
+	impossible_config.set_meta("poi_resource_bundle", bundle)
 	var failed_map = generator.generate_full(impossible_config)
 	_expect(failed_map == null, "核心 POI 无法放置时整图必须失败")
 	_expect(
@@ -812,12 +822,8 @@ func _test_camp_minimum_budget_reservation(
 	_expect(failed_map == null, "reward budget 低于 camp room 双重 minimum 成本时整图必须失败")
 	var generation_issues: Array[Dictionary] = budget_generator.get_last_generation_issues()
 	_expect(
-		_has_issue_at_path(
-			generation_issues,
-			"content_minimum_not_met",
-			"region_generation.content_profiles.room_contents"
-		),
-		"camp minimum 预留不足必须从公开 generate_full 返回 room_contents minimum 失败：%s"
+		_has_issue(generation_issues, "required_slot_budget_unavailable"),
+		"camp minimum 预留不足必须在必需图纸槽分配时阻止公开 generate_full：%s"
 		% str(generation_issues)
 	)
 

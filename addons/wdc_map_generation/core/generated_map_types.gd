@@ -24,6 +24,7 @@ enum ServerTileType {
 
 const LAYOUT_MODE_LEGACY_RADIAL: String = "legacy_radial"
 const LAYOUT_MODE_PVE_FOUR_REGION_V1: String = "pve_four_region_v1"
+const LAYOUT_MODE_POI_ONLY_V1: String = "poi_only_v1"
 const REGION_LAYOUT_CONFIG_SCHEMA_VERSION: int = 2
 const REGION_PLAN_SCHEMA_VERSION: int = 1
 const REGION_ROLE_REGULAR: String = "regular"
@@ -101,7 +102,7 @@ static func get_region_difficulty_rank(role: String) -> int:
 
 
 static func is_supported_layout_mode(mode: String) -> bool:
-	return mode == LAYOUT_MODE_LEGACY_RADIAL or mode == LAYOUT_MODE_PVE_FOUR_REGION_V1
+	return mode in [LAYOUT_MODE_LEGACY_RADIAL, LAYOUT_MODE_PVE_FOUR_REGION_V1, LAYOUT_MODE_POI_ONLY_V1]
 
 
 class CellData:
@@ -1340,6 +1341,7 @@ class MapData:
 	var monster_sites: Array[Dictionary] = []
 	var camp_encounters: Array[Dictionary] = []
 	var trap_sites: Array[Dictionary] = []
+	var furnishing_sites: Array[Dictionary] = []
 	var total_floor: int = 0
 	var large_pois: int = 0
 	var medium_pois: int = 0
@@ -1425,6 +1427,7 @@ class MapData:
 			copied.camp_encounters.append(camp_encounter.duplicate(true))
 		for trap_site: Dictionary in trap_sites:
 			copied.trap_sites.append(trap_site.duplicate(true))
+		copied.furnishing_sites = furnishing_sites.duplicate(true)
 		copied.total_floor = total_floor
 		copied.large_pois = large_pois
 		copied.medium_pois = medium_pois
@@ -1650,7 +1653,7 @@ static func validate_map_data_layout_artifacts(
 		))
 		return issues
 	match map_data.layout_mode:
-		LAYOUT_MODE_LEGACY_RADIAL:
+		LAYOUT_MODE_LEGACY_RADIAL, LAYOUT_MODE_POI_ONLY_V1:
 			if map_data.region_plan != null or map_data.region_boss_encounter != null:
 				issues.append(make_generation_issue(
 					"layout_mode_artifact_mismatch",
@@ -1746,7 +1749,7 @@ static func decode_map_data_region_artifacts(encoded_value: Variant) -> MapDataR
 			result.issues.append_array(encounter_result.get_issues())
 			if encounter_result.is_success():
 				map_data.region_boss_encounter = encounter_result.descriptor
-	elif map_data.layout_mode == LAYOUT_MODE_LEGACY_RADIAL:
+	elif map_data.layout_mode in [LAYOUT_MODE_LEGACY_RADIAL, LAYOUT_MODE_POI_ONLY_V1]:
 		if encoded.has("region_plan") or encoded.has("region_boss_encounter"):
 			result.issues.append(make_generation_issue(
 				"layout_mode_artifact_mismatch",
@@ -1773,7 +1776,7 @@ static func server_payload_from_variant(payload_value: Variant) -> MapServerPayl
 		var source_payload: MapServerPayload = payload_value as MapServerPayload
 		payload.layout_mode = source_payload.layout_mode
 		var strict_four_region_payload: bool = (
-			payload.layout_mode == LAYOUT_MODE_PVE_FOUR_REGION_V1
+			payload.layout_mode in [LAYOUT_MODE_PVE_FOUR_REGION_V1, LAYOUT_MODE_POI_ONLY_V1]
 		)
 		payload.is_valid = source_payload.is_valid
 		payload.issues = source_payload.get_issues()
@@ -1859,7 +1862,7 @@ static func server_payload_from_variant(payload_value: Variant) -> MapServerPayl
 		else:
 			payload.layout_mode = layout_mode_value as String
 	var strict_four_region_payload: bool = (
-		has_layout_mode and payload.layout_mode == LAYOUT_MODE_PVE_FOUR_REGION_V1
+		has_layout_mode and payload.layout_mode in [LAYOUT_MODE_PVE_FOUR_REGION_V1, LAYOUT_MODE_POI_ONLY_V1]
 	)
 	var width_value: Variant = payload_dict.get("width", 0)
 	var height_value: Variant = payload_dict.get("height", 0)
@@ -2011,7 +2014,9 @@ static func _append_decoded_payload_layout_issues(
 			))
 		return
 	match payload.layout_mode:
-		LAYOUT_MODE_LEGACY_RADIAL:
+		LAYOUT_MODE_LEGACY_RADIAL, LAYOUT_MODE_POI_ONLY_V1:
+			if payload.layout_mode == LAYOUT_MODE_POI_ONLY_V1:
+				_append_four_region_tile_matrix_issues(payload, raw_tile_matrix_value)
 			if has_region_plan:
 				payload.is_valid = false
 				payload.issues.append(make_generation_issue(

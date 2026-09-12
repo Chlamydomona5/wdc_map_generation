@@ -5,6 +5,7 @@ const MAP_TYPES = preload("../../core/generated_map_types.gd")
 const GENERATOR_SCRIPT = preload("../../core/generated_map_generator.gd")
 const TILE_RULES = preload("../../core/generated_map_tile_rules.gd")
 const REGION_ROCK_STYLES = preload("../../core/generated_map_region_rock_style_catalog.gd")
+const POI_ROOM_EDITOR = preload("poi_room_editor.gd")
 const WdcMapGenerationTypes = MAP_TYPES
 const WdcMapGenerationGenerator = GENERATOR_SCRIPT
 
@@ -244,6 +245,9 @@ var _parameter_editor_dirty: bool = false
 var _parameter_editor_parse_error: bool = false
 var _syncing_config_editor: bool = false
 var _config_editor_dirty: bool = false
+var _workspace_tabs: TabContainer = null
+var _poi_room_editor: Control = null
+var _previous_workspace_tab: int = 0
 
 
 func _ready() -> void:
@@ -253,10 +257,14 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
+	_workspace_tabs = TabContainer.new()
+	_workspace_tabs.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_workspace_tabs)
 	var root: VBoxContainer = VBoxContainer.new()
+	root.name = "整图预览"
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_theme_constant_override("separation", 8)
-	add_child(root)
+	_workspace_tabs.add_child(root)
 	var toolbar: HBoxContainer = HBoxContainer.new()
 	toolbar.add_theme_constant_override("separation", 8)
 	root.add_child(toolbar)
@@ -269,7 +277,7 @@ func _build_ui() -> void:
 	_filename_input.custom_minimum_size = Vector2(220.0, 0.0)
 	toolbar.add_child(_filename_input)
 	var save_button: Button = Button.new()
-	save_button.text = "保存当前配置"
+	save_button.text = "保存关联配置"
 	save_button.pressed.connect(_on_save_current_config_pressed)
 	toolbar.add_child(save_button)
 	var apply_button: Button = Button.new()
@@ -349,6 +357,64 @@ func _build_ui() -> void:
 	_hover_tile_label.add_theme_constant_override("shadow_offset_x", 1)
 	_hover_tile_label.add_theme_constant_override("shadow_offset_y", 1)
 	_preview_viewport.add_child(_hover_tile_label)
+	_poi_room_editor = POI_ROOM_EDITOR.new()
+	_workspace_tabs.add_child(_poi_room_editor)
+	_poi_room_editor.full_map_generated.connect(_on_poi_editor_full_map_generated)
+	_poi_room_editor.full_map_invalidated.connect(_on_poi_editor_full_map_invalidated)
+	_poi_room_editor.show_full_map_requested.connect(func() -> void: _workspace_tabs.current_tab = 0)
+	_workspace_tabs.tab_changed.connect(_on_workspace_tab_changed)
+	_workspace_tabs.current_tab = 1
+	_previous_workspace_tab = 1
+
+
+func _on_workspace_tab_changed(index: int) -> void:
+	if _poi_room_editor == null:
+		return
+	if _previous_workspace_tab == 0 and not _current_config_filename.is_empty():
+		if not _sync_current_config_from_editor():
+			_workspace_tabs.set_block_signals(true)
+			_workspace_tabs.current_tab = 0
+			_workspace_tabs.set_block_signals(false)
+			return
+	if index == 0 and not _current_config_filename.is_empty():
+		_load_current_config_into_editor()
+	_previous_workspace_tab = index
+
+
+func _on_poi_editor_full_map_invalidated() -> void:
+	var had_result: bool = _current_map_data != null
+	_clear_preview_result()
+	if had_result:
+		_set_status("完整地图结果已失效，请按当前编辑文档重新生成。")
+
+
+func _on_poi_editor_full_map_generated(map_data: RefCounted, seed_value: int, source: Dictionary, dependency_hash: String) -> void:
+	_current_map_data = map_data
+	_current_config_dict = source.duplicate(true)
+	_current_config_filename = str(_poi_room_editor.get("_result_map_key")).get_file()
+	_filename_input.text = _current_config_filename
+	var result_index: int = -1
+	for index: int in range(_config_selector.item_count):
+		if str(_config_selector.get_item_metadata(index)) == _current_config_filename:
+			result_index = index
+			break
+	if result_index < 0:
+		_config_selector.add_item(str(source.get("display_name", _current_config_filename)))
+		result_index = _config_selector.item_count - 1
+		_config_selector.set_item_metadata(result_index, _current_config_filename)
+	_config_selector.set_item_text(result_index, str(source.get("display_name", _current_config_filename)))
+	_config_selector.select(result_index)
+	_set_config_editor_text(JSON.stringify(source, "  "))
+	_populate_parameter_editor_from_config()
+	_preview_seed = seed_value
+	_texture_rect.texture = ImageTexture.create_from_image(_build_map_preview_image(_current_map_data))
+	_fit_preview_to_viewport()
+	_seed_label.text = "种子：%d" % seed_value
+	_set_status("房间配置器完整地图验证通过 · 依赖快照 %s" % dependency_hash.left(12))
+
+
+func _poi_resource_overrides() -> Dictionary:
+	return _poi_room_editor.model.dependency_overrides() if _poi_room_editor != null else {}
 
 
 func _build_parameter_editor_controls() -> void:
@@ -654,6 +720,11 @@ func _is_smoke_test_config_entry(config_entry: Dictionary) -> bool:
 
 
 func _on_config_selected(index: int) -> void:
+	if not _current_config_filename.is_empty() and not _sync_current_config_from_editor():
+		for previous_index: int in range(_config_selector.item_count):
+			if str(_config_selector.get_item_metadata(previous_index)) == _current_config_filename:
+				_config_selector.select(previous_index)
+		return
 	_current_config_filename = str(_config_selector.get_item_metadata(index))
 	_filename_input.text = _current_config_filename
 	_preview_seed = 0
@@ -665,7 +736,7 @@ func _on_save_current_config_pressed() -> void:
 	if not _sync_current_config_from_editor():
 		return
 	var parse_result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = (
-		CONFIG_CATALOG.parse_and_normalize_config(_current_config_dict)
+		CONFIG_CATALOG.parse_and_normalize_config(_current_config_dict, _poi_resource_overrides())
 	)
 	if not parse_result.is_success():
 		_set_status("保存失败：%s" % _format_first_issue(parse_result.get_issues()))
@@ -676,6 +747,13 @@ func _on_save_current_config_pressed() -> void:
 		_set_status("保存失败：配置文件名为空")
 		return
 	var path: String = CONFIG_CATALOG.build_config_resource_path(filename)
+	if _poi_room_editor != null:
+		_poi_room_editor.model.replace_document("map/" + filename, _current_config_dict)
+		_poi_room_editor.call("_save_project")
+		_set_status(str(_poi_room_editor.get("_status").text))
+		_current_config_filename = filename
+		_filename_input.text = filename
+		return
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		_set_status("保存失败：%s" % path)
@@ -717,7 +795,7 @@ func _rebuild_preview(randomize_seed: bool) -> void:
 		_set_status("预览失败：缺少配置")
 		return
 	var parse_result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = (
-		CONFIG_CATALOG.parse_and_normalize_config(_current_config_dict)
+		CONFIG_CATALOG.parse_and_normalize_config(_current_config_dict, _poi_resource_overrides())
 	)
 	if not parse_result.is_success():
 		_set_status("预览失败：%s" % _format_first_issue(parse_result.get_issues()))
@@ -798,7 +876,7 @@ func _fit_preview_to_viewport() -> void:
 	if _preview_viewport == null or _texture_rect == null or _current_map_data == null:
 		return
 	if _preview_viewport.size.x <= 1.0 or _preview_viewport.size.y <= 1.0:
-		call_deferred("_fit_preview_to_viewport")
+		# 隐藏页尚无布局，等 resized 再适配；递归 deferred 会在同一帧耗尽队列。
 		return
 	var map_size: Vector2 = Vector2(float(_current_map_data.width), float(_current_map_data.height))
 	if map_size.x <= 0.0 or map_size.y <= 0.0:
@@ -1403,6 +1481,8 @@ func _load_current_config_into_editor() -> void:
 		_set_config_editor_text("")
 		return
 	var config_dict: Dictionary = CONFIG_CATALOG.load_config_dict_by_filename(_current_config_filename)
+	if _poi_room_editor != null and _poi_room_editor.model.documents.has("map/" + _current_config_filename):
+		config_dict = _poi_room_editor.model.get_document("map/" + _current_config_filename)
 	_current_config_dict = config_dict.duplicate(true) if not config_dict.is_empty() else {}
 	_populate_parameter_editor_from_config()
 	_set_config_editor_text(JSON.stringify(_current_config_dict, "  ") if not _current_config_dict.is_empty() else "")
@@ -1460,9 +1540,16 @@ func _on_editor_tab_changed(tab_index: int) -> void:
 
 
 func _sync_current_config_from_editor() -> bool:
+	var success: bool = not _current_config_dict.is_empty()
 	if _editor_tabs != null and _editor_tabs.current_tab == EDITOR_TAB_PARAMETERS:
-		return _sync_current_config_from_parameter_editor()
-	return _sync_current_config_from_json_editor()
+		if _parameter_editor_dirty:
+			success = _sync_current_config_from_parameter_editor()
+	else:
+		if _config_editor_dirty:
+			success = _sync_current_config_from_json_editor()
+	if success and _poi_room_editor != null and not _current_config_filename.is_empty():
+		_poi_room_editor.model.replace_document("map/" + _current_config_filename, _current_config_dict)
+	return success
 
 
 func _sync_current_config_from_json_editor() -> bool:

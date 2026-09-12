@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "id": "refining_workshop_linear",
+  "display_name": "精炼车间·直列生产链",
+  "nodes": [
+    {
+      "id": "center",
+      "blueprints": [
+        {
+          "id": "refinery_intake",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "work",
+      "blueprints": [
+        {
+          "id": "refinery_station_a",
+          "weight": 1
+        }
+      ],
+      "min_count": 2,
+      "max_count": 3,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "store",
+      "blueprints": [
+        {
+          "id": "refinery_storage",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "maintenance",
+      "blueprints": [
+        {
+          "id": "refinery_maintenance",
+          "weight": 1
+        }
+      ],
+      "min_count": 0,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "input",
+      "from": {
+        "node": "center",
+        "port": "output"
+      },
+      "to": {
+        "node": "work",
+        "port": "input",
+        "instance": "first"
+      },
+      "mode": "pair",
+      "required": true,
+      "style": "direct",
+      "probability": 1,
+      "max_length_cells": 24
+    },
+    {
+      "id": "processing",
+      "from": {
+        "node": "work",
+        "port": "output"
+      },
+      "to": {
+        "node": "work",
+        "port": "input"
+      },
+      "mode": "chain",
+      "required": true,
+      "style": "direct",
+      "probability": 1,
+      "max_length_cells": 24
+    },
+    {
+      "id": "storage",
+      "from": {
+        "node": "work",
+        "port": "output",
+        "instance": "last"
+      },
+      "to": {
+        "node": "store",
+        "port": "input"
+      },
+      "mode": "pair",
+      "required": true,
+      "style": "direct",
+      "probability": 1,
+      "max_length_cells": 24
+    },
+    {
+      "id": "service",
+      "from": {
+        "node": "center",
+        "port": "maintenance"
+      },
+      "to": {
+        "node": "maintenance",
+        "port": "front"
+      },
+      "mode": "pair",
+      "required": false,
+      "style": "direct",
+      "probability": 1,
+      "max_length_cells": 24
+    }
+  ],
+  "primary": {
+    "node": "center",
+    "anchor": "primary"
+  }
+}

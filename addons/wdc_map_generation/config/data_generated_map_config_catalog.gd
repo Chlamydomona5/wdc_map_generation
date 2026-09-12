@@ -10,6 +10,9 @@ const DEFAULT_CONFIG_BASENAME: String = "ancient_old_mine"
 
 const GENERATED_MAP_TYPES_SCRIPT = preload("../core/generated_map_types.gd")
 const WdcMapGenerationTypes = GENERATED_MAP_TYPES_SCRIPT
+const POI_RESOURCE_CATALOG = preload("poi_resource_catalog.gd")
+const POI_POPULATION_CONTRACT = preload("../core/poi_population_contract.gd")
+const POI_COMPOSITION_GENERATOR = preload("../core/poi_composition_generator.gd")
 const REGION_CONTENT_GROUP_SPECS: Dictionary = {
 	"minerals": {
 		"count_unit": "site",
@@ -25,6 +28,8 @@ const REGION_CONTENT_GROUP_SPECS: Dictionary = {
 		"uses_value_cost": true,
 	},
 	"traps": {"count_unit": "instance", "entry_key": "trap_kind", "reference_kind": "trap"},
+	"furnishings": {"count_unit": "instance", "entry_key": "content_id", "reference_kind": "prop", "uses_value_cost": true},
+	"torches": {"count_unit": "instance", "entry_key": "content_id", "reference_kind": "torch", "uses_value_cost": true},
 	"monster_sites": {"count_unit": "spawn_site", "entry_key": "spawn_template_id", "reference_kind": "spawn"},
 	"nests": {"count_unit": "instance", "entry_key": "nest_template_id", "reference_kind": "nest"},
 	"camps": {
@@ -134,11 +139,13 @@ static func load_config_dict_by_filename(filename_value: Variant) -> Dictionary:
 
 
 static func parse_and_normalize_config(
-	raw_config_value: Variant
+	raw_config_value: Variant,
+	resource_overrides: Dictionary = {}
 ) -> WdcMapGenerationTypes.GeneratedMapConfigParseResult:
 	return _parse_and_normalize_config_into(
 		raw_config_value,
-		WdcMapGenerationTypes.MapConfig.new()
+		WdcMapGenerationTypes.MapConfig.new(),
+		resource_overrides
 	)
 
 
@@ -155,7 +162,8 @@ static func serialize_normalized_config(config_or_result: Variant) -> Dictionary
 
 static func _parse_and_normalize_config_into(
 	raw_config_value: Variant,
-	target_config: WdcMapGenerationTypes.MapConfig
+	target_config: WdcMapGenerationTypes.MapConfig,
+	resource_overrides: Dictionary = {}
 ) -> WdcMapGenerationTypes.GeneratedMapConfigParseResult:
 	var result: WdcMapGenerationTypes.GeneratedMapConfigParseResult = (
 		WdcMapGenerationTypes.GeneratedMapConfigParseResult.new()
@@ -205,7 +213,10 @@ static func _parse_and_normalize_config_into(
 				))
 			else:
 				layout_mode = str(raw_region_layout.get("mode", "")).strip_edges()
-				if layout_mode != WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+				if layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+					normalized_region_layout = {"mode": layout_mode}
+					normalized_region_generation = _normalize_poi_only_config(raw_config, issues)
+				elif layout_mode != WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
 					issues.append(_config_issue(
 						"unsupported_region_layout_mode",
 						"region_layout.mode",
@@ -230,6 +241,14 @@ static func _parse_and_normalize_config_into(
 						normalized_region_layout,
 						issues
 					)
+	var authored_bundle: Dictionary = _resolve_authored_pois(raw_config, resource_overrides, issues) if issues.is_empty() else {}
+	if layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1 and not authored_bundle.is_empty():
+		var test: Dictionary = raw_config.get("poi_only", {})
+		var composition: Dictionary = authored_bundle.get("compositions", {}).get(str(test.get("composition_id", "")), {})
+		var has_recipe: bool = not str(composition.get("reward_recipe_id", "")).is_empty()
+		var has_encounter: bool = not str(test.get("encounter_profile_id", "")).is_empty()
+		if has_recipe != has_encounter:
+			issues.append(_config_issue("invalid_poi_only_config", "poi_only.encounter_profile_id", "", "BOSS 图纸必须配置遭遇 profile，普通图纸不得携带 BOSS 遭遇"))
 	if not issues.is_empty():
 		target_config.layout_mode = layout_mode
 		target_config.region_layout = {}
@@ -241,14 +260,147 @@ static func _parse_and_normalize_config_into(
 	target_config.region_layout = normalized_region_layout.duplicate(true)
 	target_config.region_generation = normalized_region_generation.duplicate(true)
 	target_config.set_validation_issues([])
-	if layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
+	if layout_mode != WdcMapGenerationTypes.LAYOUT_MODE_LEGACY_RADIAL:
 		target_config.map_layers.clear()
 		target_config.player_spawn_layer_id = ""
 		target_config.extraction_site_layer_distribution.clear()
 	_apply_config_dict_to_map_config_unchecked(target_config, raw_config)
+	if layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		target_config.set_meta("poi_only", raw_config.poi_only.duplicate(true))
+	if not authored_bundle.is_empty():
+		target_config.set_meta("poi_resource_bundle", authored_bundle.duplicate(true))
+		target_config.set_meta("poi_population_limits", POI_POPULATION_CONTRACT.resolve_limits(
+			raw_config.get("monster_generation", {}).get("population_budgets", {}),
+			authored_bundle.get("capabilities", {}).get("population_limits", {})))
 	result.config = target_config
 	result.normalized_document = _build_normalized_document(target_config, raw_config)
 	return result
+
+
+## 从源地图条目提取真实内容规则；只改变几何模式和测试组合，不增加预算。
+static func build_poi_only_config(source_document: Dictionary, composition_id: String, seed_value: int,
+	resource_overrides: Dictionary = {}, content_profile_id: String = "", source_template_id: String = "") -> Dictionary:
+	var source: Dictionary = source_document.duplicate(true)
+	var templates: Array = source.get("poi_generation", {}).get("poi_types", [])
+	var selected: Dictionary = {}
+	for candidate: Dictionary in templates:
+		if (not source_template_id.is_empty() and str(candidate.get("id", "")) == source_template_id) or (source_template_id.is_empty() and str(candidate.get("composition_id", "")) == composition_id):
+			selected = candidate
+			break
+	var source_layout: Dictionary = source.get("region_layout", {})
+	if selected.is_empty() and source_template_id.is_empty():
+		var fallback_id: String = str(source_layout.get(WdcMapGenerationTypes.REGION_ROLE_HIGH_1, {}).get("core_poi", {}).get("template_id", ""))
+		for candidate: Dictionary in templates:
+			if str(candidate.get("id", "")) == fallback_id:
+				selected = candidate
+				break
+	if selected.is_empty():
+		return _poi_only_build_failure("poi_only.source_template_id", "源地图没有可用于测试的 POI 条目")
+	var role: String = ""
+	var profile_id: String = content_profile_id
+	for candidate_role: String in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		var slot: Dictionary = source_layout.get(candidate_role, {})
+		var matches: bool = str(slot.get("core_poi", {}).get("template_id", "")) == str(selected.id)
+		if not matches:
+			for profile: Dictionary in source.get("region_generation", {}).get("content_profiles", []):
+				if str(profile.get("id", "")) == str(slot.get("content_profile_id", "")):
+					for entry: Dictionary in profile.get("pois", {}).get("entries", []):
+						matches = matches or str(entry.get("template_id", "")) == str(selected.id)
+		if (not content_profile_id.is_empty() and str(slot.get("content_profile_id", "")) == content_profile_id) or (content_profile_id.is_empty() and matches):
+			role = candidate_role
+			profile_id = str(slot.get("content_profile_id", ""))
+			break
+	# 已保存的 POI-only 文档仍能重新导出，不需要还原四区域布局。
+	if role.is_empty() and source_layout.get("mode", "") == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		role = str(source.get("poi_only", {}).get("region_role", ""))
+		if profile_id.is_empty():
+			profile_id = str(source.get("poi_only", {}).get("content_profile_id", ""))
+	var chosen_profile: Dictionary = {}
+	for profile: Dictionary in source.get("region_generation", {}).get("content_profiles", []):
+		if str(profile.get("id", "")) == profile_id:
+			chosen_profile = profile.duplicate(true)
+	if role.is_empty() or chosen_profile.is_empty():
+		return _poi_only_build_failure("poi_only.content_profile_id", "所选条目没有唯一的源地图内容 profile")
+	selected["layout_kind"] = "authored_rooms"
+	selected["composition_id"] = composition_id
+	selected["enabled"] = true
+	for key: String in ["main_room", "sub_rooms", "connectivity", "core_metadata"]:
+		selected.erase(key)
+	var encounter_profile_id: String = str(source_layout.get(WdcMapGenerationTypes.REGION_ROLE_BOSS, {}).get("encounter_profile_id", source.get("poi_only", {}).get("encounter_profile_id", "")))
+	var selected_bundle: Dictionary = POI_RESOURCE_CATALOG.load_bundle(resource_overrides, [composition_id])
+	if not bool(selected_bundle.get("valid", false)):
+		return {"valid": false, "config": {}, "issues": selected_bundle.get("issues", [])}
+	if str(selected_bundle.get("compositions", {}).get(composition_id, {}).get("reward_recipe_id", "")).is_empty():
+		encounter_profile_id = ""
+	source["schema_version"] = 3
+	source["region_layout"] = {"mode": WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1}
+	source["region_generation"] = {"content_profiles": [chosen_profile]}
+	source["poi_only"] = {"composition_id": composition_id, "source_template_id": str(selected.id),
+		"region_role": role, "content_profile_id": profile_id, "encounter_profile_id": encounter_profile_id,
+		"padding_cells": 8}
+	source.erase("map_layers")
+	source.erase("boss_generation")
+	var map: Dictionary = source.get("map", {}).duplicate(true)
+	map["seed"] = {"mode": "fixed", "fixed_value": maxi(seed_value, 1)}
+	map["player_spawn"] = {"count": 1}
+	map["extraction_sites"] = {"count": 1}
+	source["map"] = map
+	var parsed: WdcMapGenerationTypes.GeneratedMapConfigParseResult = parse_and_normalize_config(source, resource_overrides)
+	if not parsed.is_success():
+		return {"valid": false, "config": {}, "issues": parsed.get_issues()}
+	var layout: Dictionary = POI_COMPOSITION_GENERATOR.generate(composition_id,
+		parsed.config.get_meta("poi_resource_bundle", {}), maxi(seed_value, 1))
+	if not bool(layout.get("valid", false)):
+		return {"valid": false, "config": {}, "issues": layout.get("issues", [])}
+	var bounds: Dictionary = layout.plan.bounds
+	var document: Dictionary = parsed.get_normalized_document()
+	document.map["width_cells"] = maxi(int(bounds.width) + 16, 32)
+	document.map["height_cells"] = maxi(int(bounds.height) + 16, 32)
+	return {"valid": true, "config": document, "issues": []}
+
+
+static func _poi_only_build_failure(path: String, message: String) -> Dictionary:
+	return {"valid": false, "config": {}, "issues": [_config_issue("invalid_poi_only_config", path, "", message)]}
+
+
+static func _normalize_poi_only_config(raw: Dictionary, issues: Array[Dictionary]) -> Dictionary:
+	if typeof(raw.get("schema_version")) not in [TYPE_INT, TYPE_FLOAT] or float(raw.get("schema_version", 0)) != 3.0:
+		issues.append(_config_issue("invalid_poi_only_config", "schema_version", "", "POI-only 要求 schema_version=3"))
+	if not raw.get("region_generation") is Dictionary or not raw.get("poi_generation") is Dictionary:
+		issues.append(_config_issue("invalid_poi_only_config", "region_generation", "", "测试地图必须携带内容 profile 与源条目定义对象"))
+		return {}
+	_append_unknown_region_profile_fields(raw.region_generation, ["content_profiles"], "region_generation", issues)
+	if not raw.get("poi_only") is Dictionary:
+		issues.append(_config_issue("invalid_poi_only_config", "poi_only", "", "POI-only 必须声明测试条目"))
+		return {}
+	var config: Dictionary = raw.poi_only
+	_append_unknown_region_profile_fields(config, ["composition_id", "source_template_id", "region_role", "content_profile_id", "encounter_profile_id", "padding_cells"], "poi_only", issues)
+	for key: String in ["composition_id", "source_template_id", "region_role", "content_profile_id"]:
+		if not config.get(key) is String or str(config.get(key, "")).strip_edges().is_empty():
+			issues.append(_config_issue("invalid_poi_only_config", "poi_only." + key, "", "测试字段必须是非空字符串"))
+	if config.get("region_role", "") not in WdcMapGenerationTypes.REGION_ROLE_ORDER:
+		issues.append(_config_issue("invalid_poi_only_config", "poi_only.region_role", "", "测试条目必须保留源内容区域角色"))
+	var padding: Variant = config.get("padding_cells", 8)
+	if typeof(padding) not in [TYPE_INT, TYPE_FLOAT] or float(padding) != floor(float(padding)) or float(padding) < 6 or float(padding) > 32:
+		issues.append(_config_issue("invalid_poi_only_config", "poi_only.padding_cells", "", "测试外围净空必须是 6–32 格整数"))
+	else:
+		config["padding_cells"] = int(padding)
+	if not config.get("encounter_profile_id", "") is String:
+		issues.append(_config_issue("invalid_poi_only_config", "poi_only.encounter_profile_id", "", "遭遇 profile 必须是字符串"))
+	if raw.has("map_layers") or raw.has("boss_generation") or (raw.get("region_layout", {}) as Dictionary).size() != 1:
+		issues.append(_config_issue("invalid_poi_only_config", "region_layout", "", "POI-only 不得混入四区域或旧布局声明"))
+	var selected_count: int = 0
+	for template: Dictionary in raw.get("poi_generation", {}).get("poi_types", []):
+		if str(template.get("id", "")) == str(config.get("source_template_id", "")):
+			selected_count += 1
+			if template.get("layout_kind", "") != "authored_rooms" or template.get("composition_id", "") != config.get("composition_id", ""):
+				issues.append(_config_issue("invalid_poi_only_config", "poi_only.composition_id", "", "测试组合与源条目不一致"))
+	if selected_count != 1:
+		issues.append(_config_issue("invalid_poi_only_config", "poi_only.source_template_id", "", "测试条目必须唯一存在"))
+	var profiles: Array[Dictionary] = _normalize_region_content_profiles(raw.get("region_generation", {}).get("content_profiles"), _build_region_content_reference_counts(raw), issues)
+	if profiles.size() != 1 or str(profiles[0].get("id", "")) != str(config.get("content_profile_id", "")):
+		issues.append(_config_issue("invalid_poi_only_config", "poi_only.content_profile_id", "", "POI-only 必须恰好保留所选内容 profile"))
+	return {"content_profiles": profiles}
 
 
 static func extract_map_dimensions(config_dict: Dictionary) -> Vector2i:
@@ -876,6 +1028,48 @@ static func _apply_poi_template_overrides_to_builder(
 	builder.set("generated_map_trace_small_twist", config.trace_small_twist)
 
 
+## 图纸只在解析配置时读取；生成阶段与重试共享同一份依赖快照。
+static func _resolve_authored_pois(raw: Dictionary, overrides: Dictionary, issues: Array[Dictionary]) -> Dictionary:
+	var references: Array[Dictionary] = []
+	var poi_generation: Dictionary = raw.get("poi_generation", {}) as Dictionary
+	for value: Variant in poi_generation.get("poi_types", []):
+		if not value is Dictionary:
+			continue
+		var template: Dictionary = value
+		if str(raw.get("region_layout", {}).get("mode", "")) == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1 and str(template.get("id", "")) != str(raw.get("poi_only", {}).get("source_template_id", "")):
+			continue
+		var kind: String = str(template.get("layout_kind", "legacy_rooms"))
+		if kind == "legacy_rooms":
+			continue
+		var path: String = "poi_generation.poi_types.%s" % str(template.get("id", ""))
+		if kind != "authored_rooms":
+			issues.append(_config_issue("unknown_poi_layout_kind", path, "", "未知 POI 构造类型：%s" % kind))
+			continue
+		if int(raw.get("schema_version", 0)) != 3 or not raw.has("region_layout"):
+			issues.append(_config_issue("authored_poi_requires_v3", path, "", "图纸组装需要显式布局模式和 schema_version=3"))
+		for old_key: String in ["main_room", "sub_rooms", "connectivity", "core_metadata"]:
+			if template.has(old_key):
+				issues.append(_config_issue("mixed_poi_layout", path + "." + old_key, "", "图纸组装不能混填旧矩形几何或坐标 metadata"))
+		references.append(template)
+	if references.is_empty():
+		return {}
+	var composition_ids: Array = []
+	for template: Dictionary in references:
+		var id: String = str(template.get("composition_id", ""))
+		if not composition_ids.has(id):
+			composition_ids.append(id)
+	var bundle: Dictionary = POI_RESOURCE_CATALOG.load_bundle(overrides, composition_ids)
+	if not bool(bundle.get("valid", false)):
+		for issue: Dictionary in bundle.get("issues", []):
+			issues.append(issue.duplicate(true))
+		return {}
+	for template: Dictionary in references:
+		var composition_id: String = str(template.get("composition_id", ""))
+		if not (bundle.get("compositions", {}) as Dictionary).has(composition_id):
+			issues.append(_config_issue("unknown_poi_composition", "poi_generation.poi_types.%s.composition_id" % str(template.get("id", "")), "", "找不到 POI 组合：%s" % composition_id))
+	return bundle
+
+
 static func _validate_region_schema_version(
 	raw_config: Dictionary,
 	issues: Array[Dictionary]
@@ -885,13 +1079,13 @@ static func _validate_region_schema_version(
 	if (
 		not is_numeric
 		or float(version_value) != floor(float(version_value))
-		or int(version_value) != WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION
+		or int(version_value) not in [WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION, 3]
 	):
 		issues.append(_config_issue(
 			"unsupported_region_layout_schema_version",
 			"schema_version",
 			"",
-			"pve_four_region_v1 只支持 schema version 2"
+			"pve_four_region_v1 只支持 schema version 2 或 3"
 		))
 
 
@@ -1559,6 +1753,8 @@ static func _normalize_region_content_profile(
 	}
 	for group_name_value: Variant in REGION_CONTENT_GROUP_SPECS.keys():
 		var group_name: String = str(group_name_value)
+		if group_name in ["furnishings", "torches"] and not raw_profile.has(group_name):
+			continue
 		normalized[group_name] = _normalize_region_content_count_group(
 			raw_profile.get(group_name, null),
 			group_name,
@@ -1756,11 +1952,13 @@ static func _normalize_region_content_entry(
 			raw_entry,
 			"value_cost",
 			"%s.value_cost" % path,
-			1,
+			0 if reference_kind in ["prop", "torch"] else 1,
 			true,
 			issues
 		)
 	if entry_id.is_empty():
+		return normalized
+	if reference_kind in ["prop", "torch"]:
 		return normalized
 	if reference_kind == "room_content":
 		if not REGION_ROOM_CONTENT_KINDS.has(entry_id):
@@ -1994,6 +2192,10 @@ static func _validate_and_normalize_core_poi_metadata(
 		var template_id: String = template_id_value as String if template_id_value is String else ""
 		if template_id == boss_template_id:
 			boss_template_match_count += 1
+		if str(poi_template.get("layout_kind", "")) == "authored_rooms":
+			if template_id == boss_template_id:
+				boss_metadata_count += 1
+			continue
 		if not poi_template.has("core_metadata"):
 			continue
 		var metadata_path: String = "poi_generation.poi_types[%d].core_metadata" % poi_index
@@ -2210,8 +2412,16 @@ static func _build_normalized_document(
 	source_document: Dictionary
 ) -> Dictionary:
 	var normalized: Dictionary = source_document.duplicate(true)
+	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		normalized["schema_version"] = 3
+		normalized["region_layout"] = {"mode": config.layout_mode}
+		normalized["region_generation"] = config.get_region_generation_snapshot()
+		normalized["poi_only"] = config.get_meta("poi_only", {}).duplicate(true)
+		normalized.erase("map_layers")
+		normalized.erase("boss_generation")
+		return normalized
 	if config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_PVE_FOUR_REGION_V1:
-		normalized["schema_version"] = WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION
+		normalized["schema_version"] = int(source_document.get("schema_version", WdcMapGenerationTypes.REGION_LAYOUT_CONFIG_SCHEMA_VERSION))
 		normalized["region_layout"] = _serialize_region_layout(config.region_layout)
 		normalized["region_generation"] = config.get_region_generation_snapshot()
 		normalized.erase("map_layers")

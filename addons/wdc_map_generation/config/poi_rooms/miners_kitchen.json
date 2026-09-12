@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "id": "miners_kitchen",
+  "display_name": "公共厨房与工具角",
+  "purpose": "kitchen",
+  "cells": [
+    "#########",
+    "#.......#",
+    "#.......#",
+    "#.......#",
+    "#.......#",
+    "#.......#",
+    "#########"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 4,
+      "y": 3
+    }
+  },
+  "ports": [
+    {
+      "id": "front",
+      "cells": [
+        {
+          "x": 4,
+          "y": 0
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "passage",
+      "group": "entrances",
+      "unused": "wall"
+    }
+  ],
+  "slots": [
+    {
+      "id": "stove",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 1,
+          "y": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "stove",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0,
+      "group_members": [
+        {
+          "kind": "prop",
+          "id": "crates",
+          "offset": {
+            "x": 0,
+            "y": 2
+          },
+          "rotation": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "table",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 5,
+          "y": 4
+        }
+      ],
+      "entries": [
+        {
+          "id": "table",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 7,
+          "y": 1
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 4,
+      "y": 1
+    },
+    {
+      "x": 4,
+      "y": 2
+    },
+    {
+      "x": 4,
+      "y": 3
+    }
+  ]
+}

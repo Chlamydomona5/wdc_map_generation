@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "id": "miner_house_a",
+  "display_name": "矿工小屋·单床",
+  "purpose": "home",
+  "cells": [
+    "#######",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#######"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 3,
+      "y": 3
+    }
+  },
+  "ports": [
+    {
+      "id": "front",
+      "cells": [
+        {
+          "x": 3,
+          "y": 6
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": 1
+      },
+      "kind": "passage",
+      "group": "entrances",
+      "unused": "open"
+    }
+  ],
+  "slots": [
+    {
+      "id": "bed",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 1,
+          "y": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "bed",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0,
+      "group_members": [
+        {
+          "kind": "prop",
+          "id": "crates",
+          "offset": {
+            "x": 4,
+            "y": 0
+          },
+          "rotation": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "light",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 5,
+          "y": 5
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 3,
+      "y": 3
+    },
+    {
+      "x": 3,
+      "y": 4
+    },
+    {
+      "x": 3,
+      "y": 5
+    }
+  ]
+}

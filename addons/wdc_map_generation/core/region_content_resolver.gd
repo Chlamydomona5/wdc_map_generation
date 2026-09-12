@@ -7,6 +7,7 @@ var _config: WdcMapGenerationTypes.MapConfig = null
 var _region_plan: Variant = null
 var _profiles_by_id: Dictionary = {}
 var _remaining_budgets_by_role: Dictionary = {}
+var _reserved_counts_by_role: Dictionary = {}
 
 
 func _init(
@@ -21,7 +22,7 @@ func _init(
 func is_ready() -> bool:
 	return (
 		_config != null
-		and _region_plan is WdcMapGenerationTypes.RegionPlan
+		and (_region_plan is WdcMapGenerationTypes.RegionPlan or _config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1)
 		and not _profiles_by_id.is_empty()
 	)
 
@@ -29,6 +30,10 @@ func is_ready() -> bool:
 func resolve_cell(cell: Vector2i) -> Dictionary:
 	if not is_ready():
 		return _failure("region_content_resolver_not_ready", "RegionContentResolver 尚未初始化")
+	if _config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		if cell.x < 0 or cell.y < 0 or cell.x >= _config.width or cell.y >= _config.height:
+			return _failure("region_membership_missing", "坐标超出 POI-only 测试地图")
+		return _resolve_poi_only()
 	var region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
 	if region == null:
 		return _failure("region_membership_missing", "坐标不属于任何区域")
@@ -38,6 +43,9 @@ func resolve_cell(cell: Vector2i) -> Dictionary:
 func resolve_role(role: String) -> Dictionary:
 	if not is_ready():
 		return _failure("region_content_resolver_not_ready", "RegionContentResolver 尚未初始化")
+	if _config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		var resolved: Dictionary = _resolve_poi_only()
+		return resolved if str(resolved.get("role", "")) == role else _failure("region_role_missing", "不是测试条目的源角色")
 	var region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_by_role(role)
 	if region == null:
 		return _failure("region_role_missing", "RegionPlan 缺少目标区域：%s" % role)
@@ -47,6 +55,9 @@ func resolve_role(role: String) -> Dictionary:
 func is_cell_in_role(cell: Vector2i, role: String) -> bool:
 	if not is_ready():
 		return false
+	if _config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		var resolved: Dictionary = resolve_cell(cell)
+		return bool(resolved.get("valid", false)) and str(resolved.get("role", "")) == role
 	var region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(cell)
 	return region != null and region.role == role
 
@@ -96,6 +107,11 @@ func resolve_footprint(cells: Array) -> Dictionary:
 		return _failure("invalid_region_footprint", "内容 footprint 必须由 Vector2i 坐标组成")
 	if not is_ready():
 		return _failure("region_content_resolver_not_ready", "RegionContentResolver 尚未初始化")
+	if _config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		for cell: Variant in cells:
+			if not cell is Vector2i or not bool(resolve_cell(cell).get("valid", false)):
+				return _failure("invalid_region_footprint", "测试内容占地超出地图")
+		return _resolve_poi_only()
 	var first_region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_at(
 		cells[0] as Vector2i
 	)
@@ -117,11 +133,23 @@ func resolve_footprint(cells: Array) -> Dictionary:
 func get_profile_for_role(role: String) -> Dictionary:
 	if not is_ready():
 		return {}
+	if _config.layout_mode == WdcMapGenerationTypes.LAYOUT_MODE_POI_ONLY_V1:
+		return resolve_role(role).get("profile", {}).duplicate(true)
 	var region = (_region_plan as WdcMapGenerationTypes.RegionPlan).try_get_by_role(role)
 	if region == null:
 		return {}
 	var profile_value: Variant = _profiles_by_id.get(region.content_profile_id, null)
 	return (profile_value as Dictionary).duplicate(true) if profile_value is Dictionary else {}
+
+
+## POI-only 只复用源内容额度，不构造任何空间 RegionPlan。
+func _resolve_poi_only() -> Dictionary:
+	var selected: Dictionary = _config.get_meta("poi_only", {})
+	var profile: Dictionary = _profiles_by_id.get(str(selected.get("content_profile_id", "")), {})
+	if profile.is_empty():
+		return _failure("unknown_content_profile_reference", "测试内容 profile 不存在")
+	return {"valid": true, "region_index": -1, "region_id": "", "role": str(selected.region_role),
+		"difficulty_rank": 0, "content_profile_id": str(selected.content_profile_id), "profile": profile.duplicate(true)}
 
 
 func get_section_for_role(role: String, section_name: String) -> Dictionary:
@@ -174,6 +202,28 @@ func try_spend_value_budget(role: String, budget_name: String, value_cost: int) 
 	role_budgets[budget_name] = get_remaining_value_budget(role, budget_name) - value_cost
 	_remaining_budgets_by_role[role] = role_budgets
 	return true
+
+
+## 一组具名槽一次提交两类成本和各自数量，必需成员不能部分成功。
+func reserve_authored_content(role: String, counts: Dictionary, costs: Dictionary) -> bool:
+	for section: String in counts:
+		var target: int = int(get_section_for_role(role, section).get("target_count", 0))
+		if get_reserved_count(role, section) + int(counts[section]) > target:
+			return false
+	for budget: String in costs:
+		if not can_spend_value_budget(role, budget, int(costs[budget])):
+			return false
+	for budget: String in costs:
+		try_spend_value_budget(role, budget, int(costs[budget]))
+	var role_counts: Dictionary = _reserved_counts_by_role.get(role, {}).duplicate(true)
+	for section: String in counts:
+		role_counts[section] = get_reserved_count(role, section) + int(counts[section])
+	_reserved_counts_by_role[role] = role_counts
+	return true
+
+
+func get_reserved_count(role: String, section: String) -> int:
+	return int(_reserved_counts_by_role.get(role, {}).get(section, 0))
 
 
 func select_candidates(

@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "id": "miners_settlement_alley",
+  "display_name": "矿工聚落·沿巷住宅",
+  "nodes": [
+    {
+      "id": "center",
+      "blueprints": [
+        {
+          "id": "miners_alley",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "homes",
+      "blueprints": [
+        {
+          "id": "miner_house_a",
+          "weight": 1
+        },
+        {
+          "id": "miner_house_b",
+          "weight": 1
+        }
+      ],
+      "min_count": 3,
+      "max_count": 4,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "kitchen",
+      "blueprints": [
+        {
+          "id": "miners_kitchen",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "tools",
+      "purpose": "toolshed",
+      "blueprints": [
+        {
+          "id": "miners_toolshed",
+          "weight": 1
+        }
+      ],
+      "min_count": 0,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "homes",
+      "from": {
+        "node": "center",
+        "group": "homes"
+      },
+      "to": {
+        "node": "homes",
+        "port": "front"
+      },
+      "mode": "fan_out",
+      "required": true,
+      "style": "corridor",
+      "probability": 1,
+      "max_length_cells": 8
+    },
+    {
+      "id": "kitchen",
+      "from": {
+        "node": "center",
+        "port": "kitchen"
+      },
+      "to": {
+        "node": "kitchen",
+        "port": "front"
+      },
+      "mode": "pair",
+      "required": true,
+      "style": "corridor",
+      "probability": 1,
+      "max_length_cells": 8
+    },
+    {
+      "id": "tools",
+      "from": {
+        "node": "center",
+        "port": "tools"
+      },
+      "to": {
+        "node": "tools",
+        "port": "front"
+      },
+      "mode": "pair",
+      "required": false,
+      "style": "corridor",
+      "probability": 1,
+      "max_length_cells": 8
+    }
+  ],
+  "primary": {
+    "node": "center",
+    "anchor": "primary"
+  }
+}

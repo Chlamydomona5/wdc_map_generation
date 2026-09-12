@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wdc/poi_content_capabilities.schema.json",
+  "title": "由正式游戏目录导出的只读 POI 能力快照",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generator", "cell_size_m", "content_hash", "entries", "population_limits"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generator": {"const": "DataPoiContentCapabilities"},
+    "cell_size_m": {"type": "number", "exclusiveMinimum": 0},
+    "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "population_limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordinary_initial_target", "ordinary_live_cap", "auto_initial_target_divisor", "auto_live_cap_area_divisor_cells", "poi_initial_live_cap", "poi_initial_per_poi_cap", "nest_site_cap", "active_nest_cap", "nest_children_global_live_cap", "nest_children_per_region_live_cap", "total_live_monster_safety_cap"],
+      "properties": {
+        "ordinary_initial_target": {"type": "integer", "minimum": 0},
+        "ordinary_live_cap": {"type": "integer", "minimum": 0},
+        "auto_initial_target_divisor": {"type": "number", "minimum": 1},
+        "auto_live_cap_area_divisor_cells": {"type": "number", "minimum": 1},
+        "poi_initial_live_cap": {"type": "integer", "minimum": 0},
+        "poi_initial_per_poi_cap": {"type": "integer", "minimum": 0},
+        "nest_site_cap": {"type": "integer", "minimum": 0},
+        "active_nest_cap": {"type": "integer", "minimum": 0},
+        "nest_children_global_live_cap": {"type": "integer", "minimum": 0},
+        "nest_children_per_region_live_cap": {"type": "integer", "minimum": 0},
+        "total_live_monster_safety_cap": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "cell": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "integer"}], "minItems": 2, "maxItems": 2},
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "display_name", "available", "footprint_cells", "clearance_cells", "placement_surface", "config_ids", "source_hashes"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["prop", "torch", "monster", "monster_pack", "nest", "camp", "mineral", "trap"]},
+        "display_name": {"type": "string", "minLength": 1},
+        "available": {"const": true},
+        "footprint_cells": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/cell"}},
+        "clearance_cells": {"type": "array", "items": {"$ref": "#/$defs/cell"}},
+        "placement_surface": {"enum": ["floor", "wall"]},
+        "config_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "source_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+        "size_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}}
+      }
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "id": "miners_toolshed",
+  "display_name": "矿工工具棚",
+  "purpose": "toolshed",
+  "cells": [
+    "#######",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#######"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 3,
+      "y": 2
+    }
+  },
+  "ports": [
+    {
+      "id": "front",
+      "cells": [
+        {
+          "x": 3,
+          "y": 0
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "passage",
+      "group": "service",
+      "unused": "wall"
+    }
+  ],
+  "slots": [
+    {
+      "id": "tools",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 2,
+          "y": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "workbench",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "stock",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 5,
+          "y": 3
+        }
+      ],
+      "entries": [
+        {
+          "id": "crates",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 3,
+      "y": 1
+    }
+  ]
+}

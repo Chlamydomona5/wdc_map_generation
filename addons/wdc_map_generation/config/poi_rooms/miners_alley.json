@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "id": "miners_alley",
+  "display_name": "矿工沿巷公共空间",
+  "purpose": "alley",
+  "cells": [
+    "#################",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#################"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 8,
+      "y": 2
+    }
+  },
+  "ports": [
+    {
+      "id": "home_nw",
+      "cells": [
+        {
+          "x": 4,
+          "y": 0
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "passage",
+      "group": "homes",
+      "unused": "wall"
+    },
+    {
+      "id": "home_ne",
+      "cells": [
+        {
+          "x": 12,
+          "y": 0
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "passage",
+      "group": "homes",
+      "unused": "wall"
+    },
+    {
+      "id": "home_sw",
+      "cells": [
+        {
+          "x": 4,
+          "y": 4
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": 1
+      },
+      "kind": "passage",
+      "group": "homes",
+      "unused": "wall"
+    },
+    {
+      "id": "home_se",
+      "cells": [
+        {
+          "x": 12,
+          "y": 4
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": 1
+      },
+      "kind": "passage",
+      "group": "homes",
+      "unused": "wall"
+    },
+    {
+      "id": "kitchen",
+      "cells": [
+        {
+          "x": 0,
+          "y": 2
+        }
+      ],
+      "normal": {
+        "x": -1,
+        "y": 0
+      },
+      "kind": "passage",
+      "group": "public",
+      "unused": "wall"
+    },
+    {
+      "id": "tools",
+      "cells": [
+        {
+          "x": 8,
+          "y": 0
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "passage",
+      "group": "service",
+      "unused": "wall"
+    },
+    {
+      "id": "entrance",
+      "cells": [
+        {
+          "x": 16,
+          "y": 2
+        }
+      ],
+      "normal": {
+        "x": 1,
+        "y": 0
+      },
+      "kind": "passage",
+      "group": "entrances",
+      "unused": "open"
+    }
+  ],
+  "slots": [
+    {
+      "id": "supplies",
+      "kind": "camp",
+      "points": [
+        {
+          "x": 8,
+          "y": 3
+        }
+      ],
+      "entries": [
+        {
+          "id": "miner_settlement_supply_camp",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0,
+      "guard_points": [
+        {
+          "x": -1,
+          "y": 0
+        },
+        {
+          "x": 1,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "table",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 2,
+          "y": 1
+        }
+      ],
+      "entries": [
+        {
+          "id": "table",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light_w",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 1,
+          "y": 3
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light_e",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 15,
+          "y": 3
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 1,
+      "y": 2
+    },
+    {
+      "x": 2,
+      "y": 2
+    },
+    {
+      "x": 3,
+      "y": 2
+    },
+    {
+      "x": 4,
+      "y": 2
+    },
+    {
+      "x": 5,
+      "y": 2
+    },
+    {
+      "x": 6,
+      "y": 2
+    },
+    {
+      "x": 7,
+      "y": 2
+    },
+    {
+      "x": 8,
+      "y": 2
+    },
+    {
+      "x": 9,
+      "y": 2
+    },
+    {
+      "x": 10,
+      "y": 2
+    },
+    {
+      "x": 11,
+      "y": 2
+    },
+    {
+      "x": 12,
+      "y": 2
+    },
+    {
+      "x": 13,
+      "y": 2
+    },
+    {
+      "x": 14,
+      "y": 2
+    },
+    {
+      "x": 15,
+      "y": 2
+    }
+  ]
+}

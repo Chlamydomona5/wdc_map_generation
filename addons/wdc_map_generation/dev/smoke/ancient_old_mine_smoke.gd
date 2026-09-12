@@ -30,7 +30,7 @@ func _init() -> void:
 
 
 func _test_static_contract(raw_config: Dictionary) -> void:
-	_expect(int(raw_config.get("schema_version", 0)) == 2, "配置必须保持 schema_version=2")
+	_expect(int(raw_config.get("schema_version", 0)) == 3, "图纸配置必须使用 schema_version=3")
 	_expect(str(raw_config.get("id", "")) == "ancient_old_mine", "配置 id 必须稳定")
 	_expect(not raw_config.has("map_layers"), "四区域配置不得携带 legacy map_layers")
 	_expect(not raw_config.has("boss_generation"), "四区域配置不得携带 legacy boss_generation")
@@ -134,7 +134,11 @@ func _test_static_contract(raw_config: Dictionary) -> void:
 	for template_id: String in core_template_ids.keys():
 		_expect(not _find_template(poi_types, template_id).is_empty(), "核心 POI 模板必须存在：%s" % template_id)
 	var boss_template: Dictionary = _find_template(poi_types, "command_vault_core")
-	var core_metadata: Dictionary = boss_template.get("core_metadata", {}) as Dictionary
+	_expect(str(boss_template.get("layout_kind", "")) == "authored_rooms", "总控金库必须使用图纸组装")
+	var bundle: Dictionary = CONFIG_CATALOG.parse_and_normalize_config(raw_config).config.get_meta("poi_resource_bundle", {})
+	var composition: Dictionary = bundle.get("compositions", {}).get(str(boss_template.get("composition_id", "")), {})
+	var room: Dictionary = bundle.get("rooms", {}).get("command_vault", {})
+	var core_metadata: Dictionary = {"reward_recipe_id": composition.get("reward_recipe_id", ""), "reward_gate_cells": room.get("ports", []), "reward_object_cells": room.get("anchors", {}).values()}
 	_expect(
 		str(core_metadata.get("reward_recipe_id", "")) == "ancient_old_mine_vault_rewards_v1",
 		"总控金库必须引用稳定奖励配方"
@@ -361,7 +365,7 @@ func _generated_content_counts_by_role(map_data: Variant, region_plan: Variant) 
 		var role: String = _site_region_role(poi_instance, region_plan)
 		if not bool(poi_instance.get("is_core", false)):
 			_increment_content_count(counts_by_role, role, "pois")
-		for _room_plan: Variant in poi_instance.get("room_content_plans", []) as Array:
+		for _room_plan: Variant in _room_content_plans(poi_instance):
 			_increment_content_count(counts_by_role, role, "room_contents")
 	for trap_site: Dictionary in map_data.trap_sites:
 		_increment_content_count(counts_by_role, _site_region_role(trap_site, region_plan), "traps")
@@ -411,7 +415,7 @@ func _validate_room_content_materialization(
 		artifacts.append({"artifact_kind": "camp", "artifact": camp})
 		materialized_by_plan_id[source_plan_id] = artifacts
 	for poi_instance: Dictionary in map_data.poi_instances:
-		for plan_value: Variant in poi_instance.get("room_content_plans", []) as Array:
+		for plan_value: Variant in _room_content_plans(poi_instance):
 			if not (plan_value is Dictionary):
 				_expect(false, "room_content_plans 只能包含对象")
 				continue
@@ -536,7 +540,7 @@ func _reward_spent_by_role(map_data: Variant) -> Dictionary:
 	var spent_by_role: Dictionary = {}
 	for poi_instance: Dictionary in map_data.poi_instances:
 		var role: String = str(poi_instance.get("region_role", ""))
-		for plan_value: Variant in poi_instance.get("room_content_plans", []) as Array:
+		for plan_value: Variant in _room_content_plans(poi_instance):
 			if plan_value is Dictionary:
 				spent_by_role[role] = int(spent_by_role.get(role, 0)) + int(
 					(plan_value as Dictionary).get("reward_budget_cost", 0)
@@ -595,6 +599,9 @@ func _validate_poi_wall_integrity(map_data: Variant, config: Variant, plan: Vari
 
 
 func _test_value_budget_enforcement(generator: Variant, map_data: Variant, config: Variant) -> void:
+	# 成本夹具只收紧价值额度，人口边界由专门的图纸 pipeline/authority 用例覆盖。
+	config = config.deep_clone()
+	config.remove_meta("poi_population_limits")
 	var poi_wall_probe = map_data.deep_clone()
 	var probe_cell = null
 	for y: int in range(poi_wall_probe.height):
@@ -719,7 +726,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	for poi_instance: Dictionary in clipped_reward_map.poi_instances:
 		if str(poi_instance.get("region_role", "")) != MAP_TYPES.REGION_ROLE_HIGH_1:
 			continue
-		clipped_high_1_plans += (poi_instance.get("room_content_plans", []) as Array).size()
+		clipped_high_1_plans += (_room_content_plans(poi_instance)).size()
 	_expect(clipped_high_1_plans == 1, "reward value budget 必须把 high_1 camp room target=2 稳定裁剪为 1")
 	var shared_budget_issues: Variant = generator.call(
 		"_generate_four_region_population_sites",
@@ -742,7 +749,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	for poi_instance: Dictionary in clipped_reward_map.poi_instances:
 		if str(poi_instance.get("region_role", "")) != MAP_TYPES.REGION_ROLE_HIGH_1:
 			continue
-		for plan_value: Variant in poi_instance.get("room_content_plans", []) as Array:
+		for plan_value: Variant in _room_content_plans(poi_instance):
 			if not (plan_value is Dictionary):
 				continue
 			var plan: Dictionary = plan_value as Dictionary
@@ -843,7 +850,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	for poi_instance: Dictionary in camp_budget_map.poi_instances:
 		if str(poi_instance.get("region_role", "")) != MAP_TYPES.REGION_ROLE_HIGH_1:
 			continue
-		for plan_value: Variant in poi_instance.get("room_content_plans", []) as Array:
+		for plan_value: Variant in _room_content_plans(poi_instance):
 			if plan_value is Dictionary:
 				high_1_camp_plans.append(plan_value as Dictionary)
 	_expect(high_1_camp_plans.size() == 1, "预算 4 必须只生成一个 high_1 camp room plan")
@@ -920,7 +927,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	for poi_instance: Dictionary in nest_map.poi_instances:
 		if str(poi_instance.get("region_role", "")) != MAP_TYPES.REGION_ROLE_HIGH_1:
 			continue
-		for plan_value: Variant in poi_instance.get("room_content_plans", []) as Array:
+		for plan_value: Variant in _room_content_plans(poi_instance):
 			if plan_value is Dictionary and str((plan_value as Dictionary).get("content_kind", "")) == "nest":
 				nest_plan_id = str((plan_value as Dictionary).get("plan_id", ""))
 	_expect(not nest_plan_id.is_empty(), "强制 nest 测试必须命中 nest 分支")
@@ -938,6 +945,7 @@ func _clear_room_content_plans(map_data: Variant) -> void:
 	for poi_index: int in range(map_data.poi_instances.size()):
 		var poi_instance: Dictionary = map_data.poi_instances[poi_index]
 		poi_instance["room_content_plans"] = []
+		poi_instance["content_plans"] = []
 		map_data.poi_instances[poi_index] = poi_instance
 
 
@@ -956,6 +964,8 @@ func _validate_reward_geometry(map_data: Variant, boss_core: Dictionary, metadat
 			"奖励门必须实化为受保护 POI 结构墙"
 		)
 		var outward_direction: Vector2i = _main_room_gate_outward_direction(gate_cell, main_room)
+		if str(boss_core.get("layout_kind", "")) == "authored_rooms":
+			outward_direction = _cell_from_variant(metadata.get("reward_gate_normals", [])[metadata.reward_gate_cells.find(gate_value)])
 		var outside_cell: Vector2i = gate_cell + outward_direction
 		var outside_data = (
 			map_data.get_cell(outside_cell.x, outside_cell.y)
@@ -966,13 +976,13 @@ func _validate_reward_geometry(map_data: Variant, boss_core: Dictionary, metadat
 			outside_data != null
 			and outside_data.cell_type == MAP_TYPES.CellType.FLOOR
 			and outside_data.special_block_type == MAP_TYPES.SpecialBlockType.NONE
-			and not outside_data.is_poi_protected,
+			and (str(boss_core.get("layout_kind", "")) == "authored_rooms" or not outside_data.is_poi_protected),
 			"奖励门外侧必须是可通行地板，避免解锁后仍有双层墙"
 		)
 	for object_value: Variant in metadata.get("reward_object_cells", []) as Array:
 		var object_cell: Vector2i = _cell_from_variant(object_value)
 		var object_data = map_data.get_cell(object_cell.x, object_cell.y)
-		_expect(main_room.has_point(object_cell), "奖励物件必须位于 BOSS 核心 POI 主房")
+		_expect(_cell_set(boss_core.get("floor_cells", [])).has(_cell_key(object_cell)) if str(boss_core.get("layout_kind", "")) == "authored_rooms" else main_room.has_point(object_cell), "奖励物件必须位于 BOSS 核心 POI 的可走空间")
 		_expect(footprint.has(_cell_key(object_cell)), "奖励物件必须属于 BOSS 核心 POI footprint")
 		_expect(
 			object_data != null
@@ -1359,3 +1369,18 @@ func _finish() -> void:
 		return
 	print("ancient_old_mine_smoke: PASS")
 	quit(0)
+
+
+## 将两种公开布局的计划投影到相同成本/物化断言，图纸原始计划仍留在 content_plans。
+func _room_content_plans(poi: Dictionary) -> Array:
+	var result: Array = poi.get("room_content_plans", []).duplicate(true)
+	for source: Dictionary in poi.get("content_plans", []):
+		if str(source.get("kind", "")) not in ["monster_pack", "nest", "camp"]:
+			continue
+		var plan: Dictionary = source.duplicate(true)
+		plan["content_kind"] = source.kind
+		plan["template_id"] = source.content_id
+		plan["reward_budget_cost"] = source.budget_cost
+		plan["content_value_cost"] = int(source.budget_cost) - int(source.room_content_value_cost)
+		result.append(plan)
+	return result

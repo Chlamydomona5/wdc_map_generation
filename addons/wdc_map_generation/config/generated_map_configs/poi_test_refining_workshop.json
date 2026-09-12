@@ -1,0 +1,1007 @@
+{
+  "debug": {
+    "map_view": {
+      "show_cluster_bounds": true,
+      "show_corridor_doors": true,
+      "show_poi_graph": true,
+      "show_room_labels": true,
+      "show_spawn_sites": true
+    }
+  },
+  "description": "四区域 PVE 灰盒原型：常规旧矿、矿工聚落、精炼车间与总控金库",
+  "display_name": "POI 测试 · 精炼车间·生产链",
+  "id": "poi_test_refining_workshop",
+  "map": {
+    "cell_size_m": 1.0,
+    "extraction_sites": {
+      "count": 1
+    },
+    "height_cells": 37,
+    "player_spawn": {
+      "count": 1
+    },
+    "seed": {
+      "fixed_value": 1,
+      "mode": "fixed"
+    },
+    "width_cells": 32
+  },
+  "meta": {
+    "author": "wdc",
+    "notes": "首张 pve_four_region_v1 可玩原型；复用现有怪物、陷阱、矿物、奖励与火把资产。",
+    "tags": [
+      "pve",
+      "four-region",
+      "prototype",
+      "ancient-mine"
+    ]
+  },
+  "minerals": {
+    "cluster_overrides": [],
+    "cluster_types": [
+      {
+        "enabled": true,
+        "id": "common_mineral",
+        "max_cluster_size": 5.0,
+        "min_cluster_size": 2.0,
+        "require_stone": true,
+        "spawn_probability": 0.45,
+        "spawn_scope": "global_common",
+        "tile_type_id": "mineral_wall",
+        "weight": 1.0
+      },
+      {
+        "enabled": true,
+        "id": "rare_mineral",
+        "max_cluster_size": 3.0,
+        "min_cluster_size": 1.0,
+        "require_stone": true,
+        "spawn_probability": 0.3,
+        "spawn_scope": "global_rare",
+        "tile_type_id": "rare_mineral_wall",
+        "weight": 1.0
+      }
+    ],
+    "global_distribution": {
+      "allow_clusters_inside_poi_rooms": false,
+      "allow_clusters_under_poi_corridors": false,
+      "base_candidate_chance": 0.02,
+      "exposed_wall_candidate_chance": 0.08,
+      "min_distance_between_cluster_seeds_cells": 2.0
+    }
+  },
+  "monster_generation": {
+    "ambient_isolated_sites": {
+      "attempts": 0.0,
+      "enabled": false,
+      "entries": [],
+      "min_distance_between_sites_cells": 4.0,
+      "min_distance_from_player_spawns_cells": 12.0
+    },
+    "ambient_nests": {
+      "attempts": 0.0,
+      "enabled": false,
+      "entries": [],
+      "min_distance_between_nests_cells": 8.0,
+      "min_distance_from_player_spawns_cells": 16.0
+    },
+    "global": {
+      "debug_show_spawn_sites_by_default": true,
+      "enabled": true
+    },
+    "isolated_spawn_templates": [
+      {
+        "id": "ghoul_single",
+        "monster_id": "ghoul"
+      },
+      {
+        "id": "skeleton_archer_single",
+        "monster_id": "skeleton_archer"
+      }
+    ],
+    "nest_templates": []
+  },
+  "poi_generation": {
+    "global": {
+      "default_min_distance_between_pois_cells": 6.0,
+      "default_room_content_anchor_search_radius_cells": 3.0,
+      "enabled": true,
+      "placement_attempts_per_poi": 64.0
+    },
+    "poi_types": [
+      {
+        "composition_id": "miners_settlement",
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "camp_entries": [
+              {
+                "chest_avoid_radius_cells": 1.0,
+                "guard_count_max": 2.0,
+                "guard_count_min": 1.0,
+                "guard_entries": [
+                  {
+                    "spawn_template_id": "ghoul_single",
+                    "weight": 1.5
+                  },
+                  {
+                    "spawn_template_id": "skeleton_archer_single",
+                    "weight": 0.5
+                  }
+                ],
+                "id": "miner_settlement_supply_camp",
+                "locked_prompt_text": "需要击败矿工聚落守卫",
+                "loot_container": {
+                  "container_title": "矿工补给箱",
+                  "destroy_when_empty": false,
+                  "grid_height": 2.0,
+                  "grid_width": 4.0,
+                  "slot_snapshots": [
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 1.0,
+                        "item_id": "bandage"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 6.0,
+                        "item_id": "arrow"
+                      }
+                    }
+                  ],
+                  "visual_kind": "treasure_chest"
+                },
+                "weight": 1.0
+              }
+            ],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.5
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 0.5
+              }
+            ],
+            "nest_entries": [],
+            "none_weight": 0.25
+          },
+          "sub_room_roll": {
+            "camp_entries": [
+              {
+                "chest_avoid_radius_cells": 1.0,
+                "guard_count_max": 1.0,
+                "guard_count_min": 1.0,
+                "guard_entries": [
+                  {
+                    "spawn_template_id": "ghoul_single",
+                    "weight": 1.0
+                  }
+                ],
+                "id": "miner_settlement_side_supply",
+                "locked_prompt_text": "需要击败房间守卫",
+                "loot_container": {
+                  "container_title": "旧矿补给箱",
+                  "destroy_when_empty": false,
+                  "grid_height": 2.0,
+                  "grid_width": 3.0,
+                  "slot_snapshots": [
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 1.0,
+                        "item_id": "bandage"
+                      }
+                    }
+                  ],
+                  "visual_kind": "treasure_chest"
+                },
+                "weight": 0.5
+              }
+            ],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.5
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 0.5
+              }
+            ],
+            "nest_entries": [],
+            "none_weight": 0.5
+          }
+        },
+        "count": 0.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "miner_settlement_core",
+        "layout_kind": "authored_rooms",
+        "placement": {
+          "footprint_padding_cells": 2.0,
+          "min_distance_from_other_pois_cells": 6.0,
+          "poi_attempts": 64.0,
+          "room_attempts": 32.0
+        },
+        "trace": {
+          "density_ratio": 0.45,
+          "enabled": false,
+          "radius_cells": 18.0,
+          "rays": 5.0,
+          "twist": 1.0
+        },
+        "weight": 1.0
+      },
+      {
+        "composition_id": "refining_workshop",
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "camp_entries": [
+              {
+                "chest_avoid_radius_cells": 1.0,
+                "guard_count_max": 3.0,
+                "guard_count_min": 2.0,
+                "guard_entries": [
+                  {
+                    "spawn_template_id": "ghoul_single",
+                    "weight": 0.75
+                  },
+                  {
+                    "spawn_template_id": "skeleton_archer_single",
+                    "weight": 2.0
+                  }
+                ],
+                "id": "refinery_guarded_cache",
+                "locked_prompt_text": "需要击败精炼车间守卫",
+                "loot_container": {
+                  "container_title": "精炼车间储藏箱",
+                  "destroy_when_empty": false,
+                  "grid_height": 2.0,
+                  "grid_width": 4.0,
+                  "slot_snapshots": [
+                    {
+                      "rarity": "rare",
+                      "revealed": false,
+                      "stack": {
+                        "count": 3.0,
+                        "item_id": "gold_ore"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 2.0,
+                        "item_id": "bandage"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 12.0,
+                        "item_id": "arrow"
+                      }
+                    }
+                  ],
+                  "visual_kind": "treasure_chest"
+                },
+                "weight": 1.5
+              }
+            ],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 0.75
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 2.0
+              }
+            ],
+            "nest_entries": [],
+            "none_weight": 0.1
+          },
+          "sub_room_roll": {
+            "camp_entries": [
+              {
+                "chest_avoid_radius_cells": 1.0,
+                "guard_count_max": 2.0,
+                "guard_count_min": 1.0,
+                "guard_entries": [
+                  {
+                    "spawn_template_id": "skeleton_archer_single",
+                    "weight": 2.0
+                  }
+                ],
+                "id": "refinery_side_cache",
+                "locked_prompt_text": "需要击败房间守卫",
+                "loot_container": {
+                  "container_title": "精炼零件箱",
+                  "destroy_when_empty": false,
+                  "grid_height": 2.0,
+                  "grid_width": 4.0,
+                  "slot_snapshots": [
+                    {
+                      "rarity": "rare",
+                      "revealed": false,
+                      "stack": {
+                        "count": 2.0,
+                        "item_id": "gold_ore"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 8.0,
+                        "item_id": "arrow"
+                      }
+                    }
+                  ],
+                  "visual_kind": "treasure_chest"
+                },
+                "weight": 1.0
+              }
+            ],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 0.75
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 2.0
+              }
+            ],
+            "nest_entries": [],
+            "none_weight": 0.25
+          }
+        },
+        "count": 0.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "refinery_workshop_core",
+        "layout_kind": "authored_rooms",
+        "placement": {
+          "footprint_padding_cells": 2.0,
+          "min_distance_from_other_pois_cells": 6.0,
+          "poi_attempts": 64.0,
+          "room_attempts": 32.0
+        },
+        "trace": {
+          "density_ratio": 0.5,
+          "enabled": false,
+          "radius_cells": 20.0,
+          "rays": 5.0,
+          "twist": 0.9
+        },
+        "weight": 1.0
+      },
+      {
+        "composition_id": "boss_control_vault",
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "camp_entries": [],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          },
+          "sub_room_roll": {
+            "camp_entries": [],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          }
+        },
+        "count": 0.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "command_vault_core",
+        "layout_kind": "authored_rooms",
+        "placement": {
+          "footprint_padding_cells": 3.0,
+          "min_distance_from_other_pois_cells": 8.0,
+          "poi_attempts": 64.0,
+          "room_attempts": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.0,
+          "enabled": false,
+          "radius_cells": 12.0,
+          "rays": 3.0,
+          "twist": 1.0
+        },
+        "weight": 1.0
+      },
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 1.0,
+          "extra_connection_chance": 0.0,
+          "max_extra_connections": 0.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "camp_entries": [],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          },
+          "sub_room_roll": {
+            "camp_entries": [],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 2.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 1.0
+        },
+        "count": 0.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "abandoned_mine_ruin",
+        "main_room": {
+          "height_max": 7.0,
+          "height_min": 5.0,
+          "width_max": 7.0,
+          "width_min": 5.0
+        },
+        "placement": {
+          "footprint_padding_cells": 1.0,
+          "min_distance_from_other_pois_cells": 8.0,
+          "poi_attempts": 32.0,
+          "room_attempts": 1.0
+        },
+        "sub_rooms": {
+          "count_max": 0.0,
+          "count_min": 0.0,
+          "height_max": 4.0,
+          "height_min": 4.0,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 4.0,
+          "placement_radius_min_cells": 4.0,
+          "width_max": 4.0,
+          "width_min": 4.0
+        },
+        "torch": {
+          "coverage_radius_cells": 3.0,
+          "enabled": false,
+          "max_torch_count": 0.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.0,
+          "enabled": false,
+          "radius_cells": 8.0,
+          "rays": 3.0,
+          "twist": 1.0
+        },
+        "weight": 1.0
+      },
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 2.0,
+          "extra_connection_chance": 0.0,
+          "max_extra_connections": 0.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "camp_entries": [
+              {
+                "chest_avoid_radius_cells": 1.0,
+                "guard_count_max": 1.0,
+                "guard_count_min": 1.0,
+                "guard_entries": [
+                  {
+                    "spawn_template_id": "ghoul_single",
+                    "weight": 1.0
+                  }
+                ],
+                "id": "miner_supply_cache",
+                "locked_prompt_text": "需要击败房间守卫",
+                "loot_container": {
+                  "container_title": "矿工储物箱",
+                  "destroy_when_empty": false,
+                  "grid_height": 2.0,
+                  "grid_width": 3.0,
+                  "slot_snapshots": [
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 1.0,
+                        "item_id": "bandage"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 4.0,
+                        "item_id": "arrow"
+                      }
+                    }
+                  ],
+                  "visual_kind": "treasure_chest"
+                },
+                "weight": 1.0
+              }
+            ],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 1.5
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 0.5
+              }
+            ],
+            "nest_entries": [],
+            "none_weight": 0.25
+          },
+          "sub_room_roll": {
+            "camp_entries": [],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 3.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 1.0
+        },
+        "count": 0.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "miner_supply_room",
+        "main_room": {
+          "height_max": 7.0,
+          "height_min": 5.0,
+          "width_max": 7.0,
+          "width_min": 5.0
+        },
+        "placement": {
+          "footprint_padding_cells": 1.0,
+          "min_distance_from_other_pois_cells": 5.0,
+          "poi_attempts": 32.0,
+          "room_attempts": 16.0
+        },
+        "sub_rooms": {
+          "count_max": 0.0,
+          "count_min": 0.0,
+          "height_max": 5.0,
+          "height_min": 4.0,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 7.0,
+          "placement_radius_min_cells": 5.0,
+          "width_max": 5.0,
+          "width_min": 4.0
+        },
+        "torch": {
+          "coverage_radius_cells": 3.0,
+          "enabled": true,
+          "max_torch_count": 3.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.0,
+          "enabled": false,
+          "radius_cells": 10.0,
+          "rays": 3.0,
+          "twist": 1.0
+        },
+        "weight": 1.0
+      },
+      {
+        "connectivity": {
+          "candidate_neighbors_per_room": 2.0,
+          "extra_connection_chance": 0.1,
+          "max_extra_connections": 1.0,
+          "mode": "mst_plus_extra"
+        },
+        "content": {
+          "center_ore_cluster": {
+            "avoid_radius_cells": 1.0,
+            "cluster_override_id": "",
+            "enabled": false
+          },
+          "main_room_roll": {
+            "camp_entries": [
+              {
+                "chest_avoid_radius_cells": 1.0,
+                "guard_count_max": 3.0,
+                "guard_count_min": 2.0,
+                "guard_entries": [
+                  {
+                    "spawn_template_id": "ghoul_single",
+                    "weight": 0.75
+                  },
+                  {
+                    "spawn_template_id": "skeleton_archer_single",
+                    "weight": 2.0
+                  }
+                ],
+                "id": "refinery_supply_cache",
+                "locked_prompt_text": "需要击败精炼车间守卫",
+                "loot_container": {
+                  "container_title": "精炼储物箱",
+                  "destroy_when_empty": false,
+                  "grid_height": 2.0,
+                  "grid_width": 4.0,
+                  "slot_snapshots": [
+                    {
+                      "rarity": "rare",
+                      "revealed": false,
+                      "stack": {
+                        "count": 3.0,
+                        "item_id": "gold_ore"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 2.0,
+                        "item_id": "bandage"
+                      }
+                    },
+                    {
+                      "rarity": "common",
+                      "revealed": false,
+                      "stack": {
+                        "count": 10.0,
+                        "item_id": "arrow"
+                      }
+                    }
+                  ],
+                  "visual_kind": "treasure_chest"
+                },
+                "weight": 1.0
+              }
+            ],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [
+              {
+                "spawn_template_id": "ghoul_single",
+                "weight": 0.75
+              },
+              {
+                "spawn_template_id": "skeleton_archer_single",
+                "weight": 2.0
+              }
+            ],
+            "nest_entries": [],
+            "none_weight": 0.1
+          },
+          "sub_room_roll": {
+            "camp_entries": [],
+            "min_distance_from_door_cells": 2.0,
+            "monster_entries": [],
+            "nest_entries": [],
+            "none_weight": 1.0
+          }
+        },
+        "corridor": {
+          "allow_room_reentry": true,
+          "bend_order_mode": "random",
+          "door_margin_from_corner_cells": 1.0,
+          "retry_doorway_count": 3.0,
+          "reuse_existing_corridors": true,
+          "style": "orthogonal_l",
+          "width_cells": 2.0
+        },
+        "count": 0.0,
+        "dedicated_mineral_id": "",
+        "enabled": true,
+        "id": "refinery_supply_room",
+        "main_room": {
+          "height_max": 10.0,
+          "height_min": 8.0,
+          "width_max": 10.0,
+          "width_min": 8.0
+        },
+        "placement": {
+          "footprint_padding_cells": 1.0,
+          "min_distance_from_other_pois_cells": 5.0,
+          "poi_attempts": 40.0,
+          "room_attempts": 20.0
+        },
+        "sub_rooms": {
+          "count_max": 1.0,
+          "count_min": 0.0,
+          "height_max": 6.0,
+          "height_min": 4.0,
+          "min_gap_from_rooms_cells": 1.0,
+          "placement_radius_max_cells": 8.0,
+          "placement_radius_min_cells": 5.0,
+          "width_max": 6.0,
+          "width_min": 4.0
+        },
+        "torch": {
+          "coverage_radius_cells": 3.0,
+          "enabled": true,
+          "max_torch_count": 4.0,
+          "prefer_perimeter": true,
+          "wall_inset_cells": 1.0
+        },
+        "trace": {
+          "density_ratio": 0.0,
+          "enabled": false,
+          "radius_cells": 12.0,
+          "rays": 3.0,
+          "twist": 1.0
+        },
+        "weight": 1.0
+      }
+    ]
+  },
+  "poi_only": {
+    "composition_id": "refining_workshop",
+    "content_profile_id": "ancient_old_mine_high_2_content",
+    "encounter_profile_id": "",
+    "padding_cells": 8,
+    "region_role": "high_2",
+    "source_template_id": "refinery_workshop_core"
+  },
+  "region_generation": {
+    "content_profiles": [
+      {
+        "camps": {
+          "count_unit": "encounter",
+          "entries": [
+            {
+              "camp_id": "refinery_guarded_cache",
+              "value_cost": 6,
+              "weight": 1.5
+            },
+            {
+              "camp_id": "refinery_side_cache",
+              "value_cost": 4,
+              "weight": 1.0
+            },
+            {
+              "camp_id": "refinery_supply_cache",
+              "value_cost": 5,
+              "weight": 1.0
+            }
+          ],
+          "minimum_count": 1,
+          "target_count": 2
+        },
+        "furnishings": {
+          "count_unit": "instance",
+          "entries": [
+            {
+              "content_id": "bed",
+              "value_cost": 0,
+              "weight": 1.0
+            },
+            {
+              "content_id": "table",
+              "value_cost": 0,
+              "weight": 1.0
+            },
+            {
+              "content_id": "stove",
+              "value_cost": 0,
+              "weight": 1.0
+            },
+            {
+              "content_id": "furnace",
+              "value_cost": 0,
+              "weight": 1.0
+            },
+            {
+              "content_id": "workbench",
+              "value_cost": 0,
+              "weight": 1.0
+            },
+            {
+              "content_id": "crates",
+              "value_cost": 0,
+              "weight": 1.0
+            }
+          ],
+          "minimum_count": 0,
+          "target_count": 24
+        },
+        "id": "ancient_old_mine_high_2_content",
+        "mineral_value_budget": 36,
+        "minerals": {
+          "count_unit": "site",
+          "entries": [
+            {
+              "cluster_type_id": "common_mineral",
+              "value_cost": 3,
+              "weight": 1.0
+            },
+            {
+              "cluster_type_id": "rare_mineral",
+              "value_cost": 4,
+              "weight": 3.0
+            }
+          ],
+          "minimum_count": 8,
+          "target_count": 14
+        },
+        "monster_sites": {
+          "count_unit": "spawn_site",
+          "entries": [
+            {
+              "spawn_template_id": "ghoul_single",
+              "weight": 1.0
+            },
+            {
+              "spawn_template_id": "skeleton_archer_single",
+              "weight": 3.0
+            }
+          ],
+          "minimum_count": 3,
+          "target_count": 6
+        },
+        "nests": {
+          "count_unit": "instance",
+          "entries": [],
+          "minimum_count": 0,
+          "target_count": 0
+        },
+        "pois": {
+          "count_unit": "instance",
+          "entries": [
+            {
+              "template_id": "refinery_supply_room",
+              "weight": 1.0
+            }
+          ],
+          "minimum_count": 1,
+          "target_count": 2
+        },
+        "reward_value_budget": 28,
+        "room_contents": {
+          "count_unit": "placement_site",
+          "entries": [
+            {
+              "content_kind": "monster_pack",
+              "value_cost": 2,
+              "weight": 1.0
+            },
+            {
+              "content_kind": "camp",
+              "value_cost": 3,
+              "weight": 2.0
+            }
+          ],
+          "minimum_count": 2,
+          "target_count": 4
+        },
+        "torches": {
+          "count_unit": "instance",
+          "entries": [
+            {
+              "content_id": "world_torch",
+              "value_cost": 0,
+              "weight": 1.0
+            }
+          ],
+          "minimum_count": 0,
+          "target_count": 16
+        },
+        "traps": {
+          "count_unit": "instance",
+          "entries": [
+            {
+              "trap_kind": "spike",
+              "weight": 1.0
+            },
+            {
+              "trap_kind": "arrow_slit",
+              "weight": 2.0
+            },
+            {
+              "trap_kind": "explosive_ore_chain",
+              "weight": 1.0
+            },
+            {
+              "trap_kind": "pressure_plate",
+              "weight": 1.0
+            }
+          ],
+          "minimum_count": 2,
+          "target_count": 5
+        },
+        "wall_durability": {
+          "mineral_max_hit_points": 4,
+          "ordinary_max_hit_points": 3,
+          "poi_max_hit_points": 4
+        }
+      }
+    ]
+  },
+  "region_layout": {
+    "mode": "poi_only_v1"
+  },
+  "schema_version": 3,
+  "terrain": {
+    "global_corridors": {
+      "count": 8.0,
+      "enabled": true,
+      "length_factor": 0.6,
+      "width_cells": 3.0,
+      "wobble_chance": 0.25
+    },
+    "noise_fill_percent": 0.58,
+    "smooth_iterations": 4.0
+  },
+  "traps": {
+    "arrow_slit_max_count": 16.0,
+    "arrow_slit_min_spacing": 2.0,
+    "explosive_chain_count": 8.0,
+    "explosive_chain_spacing": 5.0,
+    "high_density_mode": false,
+    "mimic_ore_max_count": 8.0,
+    "mimic_ore_min_spacing": 3.0,
+    "pressure_plate_max_count": 12.0,
+    "pressure_plate_min_spacing": 3.0,
+    "spike_max_count": 16.0,
+    "spike_min_spacing": 3.0
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "boss_control_vault",
+  "display_name": "总控金库·受保护奖励门",
+  "nodes": [
+    {
+      "id": "center",
+      "blueprints": [
+        {
+          "id": "command_vault",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "connections": [],
+  "primary": {
+    "node": "center",
+    "anchor": "primary"
+  },
+  "reward_recipe_id": "ancient_old_mine_vault_rewards_v1"
+}

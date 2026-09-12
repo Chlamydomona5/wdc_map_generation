@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "id": "refinery_storage",
+  "display_name": "成品仓库",
+  "purpose": "storage",
+  "cells": [
+    "#######",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#######"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 3,
+      "y": 3
+    }
+  },
+  "ports": [
+    {
+      "id": "input",
+      "cells": [
+        {
+          "x": 0,
+          "y": 3
+        },
+        {
+          "x": 0,
+          "y": 4
+        }
+      ],
+      "normal": {
+        "x": -1,
+        "y": 0
+      },
+      "kind": "passage",
+      "group": "production",
+      "unused": "wall"
+    }
+  ],
+  "slots": [
+    {
+      "id": "cache",
+      "kind": "camp",
+      "points": [
+        {
+          "x": 3,
+          "y": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "refinery_guarded_cache",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0,
+      "guard_points": [
+        {
+          "x": -1,
+          "y": 0
+        },
+        {
+          "x": 1,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "stock",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 2,
+          "y": 5
+        }
+      ],
+      "entries": [
+        {
+          "id": "crates",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0,
+      "group_members": [
+        {
+          "kind": "prop",
+          "id": "crates",
+          "offset": {
+            "x": 1,
+            "y": 0
+          },
+          "rotation": 0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "light",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 5,
+          "y": 5
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 1,
+      "y": 3
+    },
+    {
+      "x": 2,
+      "y": 3
+    },
+    {
+      "x": 3,
+      "y": 3
+    }
+  ]
+}

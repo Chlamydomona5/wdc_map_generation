@@ -1,0 +1,323 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "cells": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "string",
+        "maxLength": 128,
+        "pattern": "^[#. ]*$"
+      }
+    },
+    "rotations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/rotation"
+      }
+    },
+    "anchors": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/cell"
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/slot"
+      }
+    },
+    "keep_clear": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/cell"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "cells"
+  ],
+  "$defs": {
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        }
+      }
+    },
+    "rotation": {
+      "type": "integer",
+      "enum": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "cells": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cell"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "normal": {
+          "$ref": "#/$defs/cell"
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "group": {
+          "type": "string"
+        },
+        "unused": {
+          "enum": [
+            "wall",
+            "open"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "cells",
+        "normal"
+      ]
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "kind": {
+          "enum": [
+            "torch",
+            "prop",
+            "monster_pack",
+            "nest",
+            "camp",
+            "mineral",
+            "trap"
+          ]
+        },
+        "points": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "region": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        },
+        "min_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "rotation": {
+          "$ref": "#/$defs/rotation"
+        },
+        "footprint": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "clearance": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "guard_points": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        },
+        "exclusive_group": {
+          "type": "string"
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "near_wall": {
+              "type": "boolean"
+            },
+            "min_distance_from_ports_cells": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "face_port": {
+              "type": "string"
+            }
+          },
+          "required": []
+        },
+        "group_members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              "kind": {
+                "enum": [
+                  "torch",
+                  "prop",
+                  "monster_pack",
+                  "nest",
+                  "camp",
+                  "mineral",
+                  "trap"
+                ]
+              },
+              "offset": {
+                "$ref": "#/$defs/cell"
+              },
+              "rotation": {
+                "$ref": "#/$defs/rotation"
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "offset"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "entries"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "points"
+          ],
+          "properties": {
+            "points": {
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "required": [
+            "region"
+          ],
+          "properties": {
+            "region": {
+              "minItems": 1
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wdc.local/schemas/poi_room.schema.json",
+  "title": "POI 房间图纸"
+}

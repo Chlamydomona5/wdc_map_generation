@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "id": "command_vault",
+  "display_name": "总控金库",
+  "purpose": "boss",
+  "cells": [
+    "       ...       ",
+    "       ...       ",
+    "#######...#######",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#################",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#...............#",
+    "#################"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 8,
+      "y": 7
+    },
+    "boss_spawn": {
+      "x": 8,
+      "y": 7
+    },
+    "reward_gate_0": {
+      "x": 8,
+      "y": 13
+    },
+    "reward_device_supply": {
+      "x": 5,
+      "y": 15
+    },
+    "reward_device_mineral": {
+      "x": 11,
+      "y": 15
+    },
+    "reward_device_armory": {
+      "x": 5,
+      "y": 17
+    },
+    "reward_device_reliquary": {
+      "x": 11,
+      "y": 17
+    }
+  },
+  "ports": [
+    {
+      "id": "reward_gate",
+      "cells": [
+        {
+          "x": 8,
+          "y": 13
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "reward_gate",
+      "group": "reward",
+      "unused": "wall"
+    },
+    {
+      "id": "entrance",
+      "cells": [
+        {
+          "x": 7,
+          "y": 0
+        },
+        {
+          "x": 8,
+          "y": 0
+        },
+        {
+          "x": 9,
+          "y": 0
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": -1
+      },
+      "kind": "passage",
+      "group": "entry",
+      "unused": "open"
+    }
+  ],
+  "slots": [
+    {
+      "id": "light_nw",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 2,
+          "y": 4
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light_ne",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 14,
+          "y": 4
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light_sw",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 2,
+          "y": 16
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light_se",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 14,
+          "y": 16
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 8,
+      "y": 1
+    },
+    {
+      "x": 8,
+      "y": 2
+    },
+    {
+      "x": 8,
+      "y": 3
+    },
+    {
+      "x": 8,
+      "y": 4
+    },
+    {
+      "x": 8,
+      "y": 5
+    },
+    {
+      "x": 8,
+      "y": 6
+    },
+    {
+      "x": 8,
+      "y": 7
+    },
+    {
+      "x": 8,
+      "y": 8
+    },
+    {
+      "x": 8,
+      "y": 9
+    },
+    {
+      "x": 8,
+      "y": 10
+    },
+    {
+      "x": 8,
+      "y": 11
+    },
+    {
+      "x": 8,
+      "y": 12
+    },
+    {
+      "x": 8,
+      "y": 14
+    },
+    {
+      "x": 8,
+      "y": 15
+    },
+    {
+      "x": 8,
+      "y": 16
+    },
+    {
+      "x": 8,
+      "y": 17
+    }
+  ]
+}

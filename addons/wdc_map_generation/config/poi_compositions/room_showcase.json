@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "room_showcase",
+  "display_name": "矿工小屋预览",
+  "nodes": [
+    {
+      "id": "home",
+      "blueprints": [
+        {
+          "id": "miner_house_a",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "rotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "connections": [],
+  "primary": {
+    "node": "home",
+    "anchor": "primary"
+  }
+}

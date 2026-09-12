@@ -2,85 +2,264 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WDC Generated Map Config",
   "type": "object",
-  "required": ["schema_version", "id", "display_name", "map", "terrain", "minerals", "poi_generation"],
+  "required": [
+    "schema_version",
+    "id",
+    "display_name",
+    "map",
+    "terrain",
+    "minerals",
+    "poi_generation"
+  ],
   "allOf": [
     {
-      "if": { "required": ["region_layout"] },
+      "if": {
+        "required": [
+          "region_layout"
+        ]
+      },
       "then": {
         "properties": {
-          "schema_version": { "const": 2 }
+          "schema_version": {
+            "enum": [
+              2,
+              3
+            ]
+          }
         }
       }
     },
     {
       "if": {
-        "required": ["region_layout"],
+        "required": [
+          "region_layout"
+        ],
         "properties": {
           "region_layout": {
             "type": "object",
-            "required": ["mode"],
+            "required": [
+              "mode"
+            ],
             "properties": {
-              "mode": { "const": "pve_four_region_v1" }
+              "mode": {
+                "const": "pve_four_region_v1"
+              }
             }
           }
         }
       },
       "then": {
-        "required": ["region_generation"]
+        "required": [
+          "region_generation"
+        ],
+        "properties": {
+          "region_generation": {
+            "$ref": "#/$defs/regionGeneration"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "poi_generation": {
+            "properties": {
+              "poi_types": {
+                "contains": {
+                  "required": [
+                    "layout_kind"
+                  ],
+                  "properties": {
+                    "layout_kind": {
+                      "const": "authored_rooms"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "region_layout"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": 3
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "region_layout"
+        ],
+        "properties": {
+          "region_layout": {
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "const": "poi_only_v1"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "poi_only",
+          "region_generation"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": 3
+          },
+          "region_generation": {
+            "$ref": "#/$defs/poiOnlyGeneration"
+          }
+        }
       }
     }
   ],
   "properties": {
-    "schema_version": { "type": "integer", "minimum": 1 },
-    "id": { "type": "string", "minLength": 1 },
-    "display_name": { "type": "string", "minLength": 1 },
-    "description": { "type": "string" },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
     "map": {
       "type": "object",
-      "required": ["width_cells", "height_cells", "seed"],
+      "required": [
+        "width_cells",
+        "height_cells",
+        "seed"
+      ],
       "properties": {
-        "width_cells": { "type": "integer", "minimum": 8 },
-        "height_cells": { "type": "integer", "minimum": 8 },
-        "cell_size_m": { "type": "number", "exclusiveMinimum": 0 },
+        "width_cells": {
+          "type": "integer",
+          "minimum": 8
+        },
+        "height_cells": {
+          "type": "integer",
+          "minimum": 8
+        },
+        "cell_size_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "seed": {
           "type": "object",
           "properties": {
-            "mode": { "enum": ["random", "fixed"] },
-            "fixed_value": { "type": "integer", "minimum": 0 }
+            "mode": {
+              "enum": [
+                "random",
+                "fixed"
+              ]
+            },
+            "fixed_value": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         },
         "player_spawn": {
           "type": "object",
           "properties": {
-            "count": { "type": "integer", "minimum": 0, "default": 1 },
-            "layer_id": { "enum": ["outer"] },
-            "edge_margin_cells": { "type": "integer", "minimum": 0 },
-            "min_distance_between_spawns_cells": { "type": "number", "minimum": 0 },
-            "clearance_radius_cells": { "type": "integer", "minimum": 0 },
-            "min_clearance_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1
+            },
+            "layer_id": {
+              "enum": [
+                "outer"
+              ]
+            },
+            "edge_margin_cells": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "min_distance_between_spawns_cells": {
+              "type": "number",
+              "minimum": 0
+            },
+            "clearance_radius_cells": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "min_clearance_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         },
         "extraction_sites": {
           "type": "object",
           "properties": {
-            "count": { "type": "integer", "minimum": 0, "default": 1 },
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1
+            },
             "layer_distribution": {
               "type": "array",
               "minItems": 1,
               "items": {
                 "type": "object",
-                "required": ["layer_id", "ratio"],
+                "required": [
+                  "layer_id",
+                  "ratio"
+                ],
                 "properties": {
-                  "layer_id": { "enum": ["inner", "middle"] },
-                  "ratio": { "type": "number", "exclusiveMinimum": 0 }
+                  "layer_id": {
+                    "enum": [
+                      "inner",
+                      "middle"
+                    ]
+                  },
+                  "ratio": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
                 }
               }
             },
-            "min_distance_from_player_spawns_cells": { "type": "number", "minimum": 0 },
-            "min_distance_between_sites_cells": { "type": "number", "minimum": 0 },
-            "edge_margin_cells": { "type": "integer", "minimum": 0 },
-            "clearance_radius_cells": { "type": "integer", "minimum": 0 },
-            "min_clearance_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+            "min_distance_from_player_spawns_cells": {
+              "type": "number",
+              "minimum": 0
+            },
+            "min_distance_between_sites_cells": {
+              "type": "number",
+              "minimum": 0
+            },
+            "edge_margin_cells": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "clearance_radius_cells": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "min_clearance_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         }
       }
@@ -90,33 +269,111 @@
       "description": "Three concentric map layers resolved from the map geometry center.",
       "items": {
         "type": "object",
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "properties": {
-          "id": { "enum": ["inner", "middle", "outer"] },
-          "max_radius_cells": { "type": "number", "minimum": 0 },
-          "max_radius_ratio": { "type": "number", "minimum": 0 },
-          "stone_max_hit_points": { "type": "integer", "minimum": 1 },
-          "mineral_budget_weight": { "type": "number", "minimum": 0 },
-          "poi_budget_weight": { "type": "number", "minimum": 0 },
-          "trap_budget_weight": { "type": "number", "minimum": 0 },
-          "monster_budget_weight": { "type": "number", "minimum": 0 },
-          "room_content_danger_multiplier": { "type": "number", "minimum": 0 },
-          "boundary_noise_amplitude_cells": { "type": "number", "minimum": 0 },
-          "boundary_noise_scale_cells": { "type": "number", "minimum": 1 },
-          "boundary_noise_octaves": { "type": "integer", "minimum": 1, "maximum": 6 },
-          "boundary_noise_persistence": { "type": "number", "minimum": 0, "maximum": 1 },
-          "boundary_noise_seed_offset": { "type": "integer" }
+          "id": {
+            "enum": [
+              "inner",
+              "middle",
+              "outer"
+            ]
+          },
+          "max_radius_cells": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_radius_ratio": {
+            "type": "number",
+            "minimum": 0
+          },
+          "stone_max_hit_points": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mineral_budget_weight": {
+            "type": "number",
+            "minimum": 0
+          },
+          "poi_budget_weight": {
+            "type": "number",
+            "minimum": 0
+          },
+          "trap_budget_weight": {
+            "type": "number",
+            "minimum": 0
+          },
+          "monster_budget_weight": {
+            "type": "number",
+            "minimum": 0
+          },
+          "room_content_danger_multiplier": {
+            "type": "number",
+            "minimum": 0
+          },
+          "boundary_noise_amplitude_cells": {
+            "type": "number",
+            "minimum": 0
+          },
+          "boundary_noise_scale_cells": {
+            "type": "number",
+            "minimum": 1
+          },
+          "boundary_noise_octaves": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "boundary_noise_persistence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "boundary_noise_seed_offset": {
+            "type": "integer"
+          }
         },
         "anyOf": [
-          { "required": ["max_radius_cells"] },
-          { "required": ["max_radius_ratio"] }
+          {
+            "required": [
+              "max_radius_cells"
+            ]
+          },
+          {
+            "required": [
+              "max_radius_ratio"
+            ]
+          }
         ]
       }
     },
-    "region_layout": { "$ref": "#/$defs/pveFourRegionLayout" },
-    "region_generation": { "$ref": "#/$defs/regionGeneration" },
-    "terrain": { "type": "object" },
-    "minerals": { "type": "object" },
+    "region_layout": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/pveFourRegionLayout"
+        },
+        {
+          "$ref": "#/$defs/poiOnlyLayout"
+        }
+      ]
+    },
+    "region_generation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/regionGeneration"
+        },
+        {
+          "$ref": "#/$defs/poiOnlyGeneration"
+        }
+      ]
+    },
+    "terrain": {
+      "type": "object"
+    },
+    "minerals": {
+      "type": "object"
+    },
     "poi_generation": {
       "type": "object",
       "properties": {
@@ -125,49 +382,138 @@
           "items": {
             "type": "object",
             "properties": {
-              "core_metadata": { "$ref": "#/$defs/corePoiMetadata" }
-            }
+              "core_metadata": {
+                "$ref": "#/$defs/corePoiMetadata"
+              },
+              "layout_kind": {
+                "enum": [
+                  "legacy_rooms",
+                  "authored_rooms"
+                ]
+              },
+              "composition_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "layout_kind"
+                  ],
+                  "properties": {
+                    "layout_kind": {
+                      "const": "authored_rooms"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "composition_id"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "main_room"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "sub_rooms"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "connectivity"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "core_metadata"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       }
     },
-    "monster_generation": { "type": "object" },
-    "debug": { "type": "object" }
+    "monster_generation": {
+      "type": "object"
+    },
+    "debug": {
+      "type": "object"
+    },
+    "poi_only": {
+      "$ref": "#/$defs/poiOnlyConfig"
+    }
   },
   "$defs": {
     "cellOffset": {
       "type": "object",
-      "required": ["x", "y"],
+      "required": [
+        "x",
+        "y"
+      ],
       "properties": {
-        "x": { "type": "integer" },
-        "y": { "type": "integer" }
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false
     },
     "corePoiMetadata": {
       "type": "object",
-      "required": ["reward_gate_cells", "reward_object_cells", "reward_recipe_id"],
+      "required": [
+        "reward_gate_cells",
+        "reward_object_cells",
+        "reward_recipe_id"
+      ],
       "properties": {
         "reward_gate_cells": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/cellOffset" }
+          "items": {
+            "$ref": "#/$defs/cellOffset"
+          }
         },
         "reward_object_cells": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/cellOffset" }
+          "items": {
+            "$ref": "#/$defs/cellOffset"
+          }
         },
-        "reward_recipe_id": { "type": "string", "minLength": 1 }
+        "reward_recipe_id": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "additionalProperties": false
     },
     "sizeCells": {
       "type": "object",
-      "required": ["x", "y"],
+      "required": [
+        "x",
+        "y"
+      ],
       "properties": {
-        "x": { "type": "integer", "minimum": 1 },
-        "y": { "type": "integer", "minimum": 1 }
+        "x": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
@@ -185,172 +531,417 @@
         "max_attempts"
       ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "shape_algorithm": {
-          "enum": ["rectangle", "rounded_rectangle", "noisy_ellipse"]
+        "id": {
+          "type": "string",
+          "minLength": 1
         },
-        "min_size_cells": { "$ref": "#/$defs/sizeCells" },
-        "max_size_cells": { "$ref": "#/$defs/sizeCells" },
-        "edge_margin_cells": { "type": "integer", "minimum": 1 },
-        "regular_moat_cells": { "type": "integer", "minimum": 1 },
-        "core_poi_padding_cells": { "type": "integer", "minimum": 0 },
-        "seed_salt": { "type": "integer" },
-        "max_attempts": { "type": "integer", "minimum": 1 }
+        "shape_algorithm": {
+          "enum": [
+            "rectangle",
+            "rounded_rectangle",
+            "noisy_ellipse"
+          ]
+        },
+        "min_size_cells": {
+          "$ref": "#/$defs/sizeCells"
+        },
+        "max_size_cells": {
+          "$ref": "#/$defs/sizeCells"
+        },
+        "edge_margin_cells": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "regular_moat_cells": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "core_poi_padding_cells": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "seed_salt": {
+          "type": "integer"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "mineralProfileEntry": {
       "type": "object",
-      "required": ["cluster_type_id", "weight", "value_cost"],
+      "required": [
+        "cluster_type_id",
+        "weight",
+        "value_cost"
+      ],
       "properties": {
-        "cluster_type_id": { "type": "string", "minLength": 1 },
-        "weight": { "type": "number", "exclusiveMinimum": 0 },
-        "value_cost": { "type": "integer", "minimum": 1 }
+        "cluster_type_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "value_cost": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "poiProfileEntry": {
       "type": "object",
-      "required": ["template_id", "weight"],
+      "required": [
+        "template_id",
+        "weight"
+      ],
       "properties": {
-        "template_id": { "type": "string", "minLength": 1 },
-        "weight": { "type": "number", "exclusiveMinimum": 0 }
+        "template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       },
       "additionalProperties": false
     },
     "roomContentProfileEntry": {
       "type": "object",
-      "required": ["content_kind", "weight", "value_cost"],
+      "required": [
+        "content_kind",
+        "weight",
+        "value_cost"
+      ],
       "properties": {
-        "content_kind": { "enum": ["monster_pack", "nest", "camp"] },
-        "weight": { "type": "number", "exclusiveMinimum": 0 },
-        "value_cost": { "type": "integer", "minimum": 1 }
+        "content_kind": {
+          "enum": [
+            "monster_pack",
+            "nest",
+            "camp"
+          ]
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "value_cost": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "trapProfileEntry": {
       "type": "object",
-      "required": ["trap_kind", "weight"],
+      "required": [
+        "trap_kind",
+        "weight"
+      ],
       "properties": {
         "trap_kind": {
-          "enum": ["spike", "explosive_ore_chain", "arrow_slit", "mimic_ore", "pressure_plate"]
+          "enum": [
+            "spike",
+            "explosive_ore_chain",
+            "arrow_slit",
+            "mimic_ore",
+            "pressure_plate"
+          ]
         },
-        "weight": { "type": "number", "exclusiveMinimum": 0 }
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       },
       "additionalProperties": false
     },
     "monsterSiteProfileEntry": {
       "type": "object",
-      "required": ["spawn_template_id", "weight"],
+      "required": [
+        "spawn_template_id",
+        "weight"
+      ],
       "properties": {
-        "spawn_template_id": { "type": "string", "minLength": 1 },
-        "weight": { "type": "number", "exclusiveMinimum": 0 }
+        "spawn_template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       },
       "additionalProperties": false
     },
     "nestProfileEntry": {
       "type": "object",
-      "required": ["nest_template_id", "weight"],
+      "required": [
+        "nest_template_id",
+        "weight"
+      ],
       "properties": {
-        "nest_template_id": { "type": "string", "minLength": 1 },
-        "weight": { "type": "number", "exclusiveMinimum": 0 }
+        "nest_template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       },
       "additionalProperties": false
     },
     "campProfileEntry": {
       "type": "object",
-      "required": ["camp_id", "weight", "value_cost"],
+      "required": [
+        "camp_id",
+        "weight",
+        "value_cost"
+      ],
       "properties": {
-        "camp_id": { "type": "string", "minLength": 1 },
-        "weight": { "type": "number", "exclusiveMinimum": 0 },
-        "value_cost": { "type": "integer", "minimum": 1 }
+        "camp_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "value_cost": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "mineralCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "site" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/mineralProfileEntry" } }
+        "count_unit": {
+          "const": "site"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mineralProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "poiCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "instance" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/poiProfileEntry" } }
+        "count_unit": {
+          "const": "instance"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/poiProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "roomContentCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "placement_site" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/roomContentProfileEntry" } }
+        "count_unit": {
+          "const": "placement_site"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/roomContentProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "trapCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "instance" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/trapProfileEntry" } }
+        "count_unit": {
+          "const": "instance"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trapProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "monsterSiteCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "spawn_site" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/monsterSiteProfileEntry" } }
+        "count_unit": {
+          "const": "spawn_site"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/monsterSiteProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "nestCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "instance" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/nestProfileEntry" } }
+        "count_unit": {
+          "const": "instance"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nestProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "campCountProfile": {
       "type": "object",
-      "required": ["count_unit", "target_count", "minimum_count", "entries"],
+      "required": [
+        "count_unit",
+        "target_count",
+        "minimum_count",
+        "entries"
+      ],
       "properties": {
-        "count_unit": { "const": "encounter" },
-        "target_count": { "type": "integer", "minimum": 0 },
-        "minimum_count": { "type": "integer", "minimum": 0 },
-        "entries": { "type": "array", "items": { "$ref": "#/$defs/campProfileEntry" } }
+        "count_unit": {
+          "const": "encounter"
+        },
+        "target_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/campProfileEntry"
+          }
+        }
       },
       "additionalProperties": false
     },
     "wallDurability": {
       "type": "object",
-      "required": ["ordinary_max_hit_points", "mineral_max_hit_points", "poi_max_hit_points"],
+      "required": [
+        "ordinary_max_hit_points",
+        "mineral_max_hit_points",
+        "poi_max_hit_points"
+      ],
       "properties": {
-        "ordinary_max_hit_points": { "type": "integer", "minimum": 1 },
-        "mineral_max_hit_points": { "type": "integer", "minimum": 1 },
-        "poi_max_hit_points": { "type": "integer", "minimum": 1 }
+        "ordinary_max_hit_points": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mineral_max_hit_points": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "poi_max_hit_points": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
@@ -370,90 +961,371 @@
         "camps"
       ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "wall_durability": { "$ref": "#/$defs/wallDurability" },
-        "mineral_value_budget": { "type": "integer", "minimum": 0 },
-        "reward_value_budget": { "type": "integer", "minimum": 0 },
-        "minerals": { "$ref": "#/$defs/mineralCountProfile" },
-        "pois": { "$ref": "#/$defs/poiCountProfile" },
-        "room_contents": { "$ref": "#/$defs/roomContentCountProfile" },
-        "traps": { "$ref": "#/$defs/trapCountProfile" },
-        "monster_sites": { "$ref": "#/$defs/monsterSiteCountProfile" },
-        "nests": { "$ref": "#/$defs/nestCountProfile" },
-        "camps": { "$ref": "#/$defs/campCountProfile" }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wall_durability": {
+          "$ref": "#/$defs/wallDurability"
+        },
+        "mineral_value_budget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reward_value_budget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minerals": {
+          "$ref": "#/$defs/mineralCountProfile"
+        },
+        "pois": {
+          "$ref": "#/$defs/poiCountProfile"
+        },
+        "room_contents": {
+          "$ref": "#/$defs/roomContentCountProfile"
+        },
+        "traps": {
+          "$ref": "#/$defs/trapCountProfile"
+        },
+        "monster_sites": {
+          "$ref": "#/$defs/monsterSiteCountProfile"
+        },
+        "nests": {
+          "$ref": "#/$defs/nestCountProfile"
+        },
+        "camps": {
+          "$ref": "#/$defs/campCountProfile"
+        },
+        "furnishings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count_unit",
+            "target_count",
+            "minimum_count",
+            "entries"
+          ],
+          "properties": {
+            "count_unit": {
+              "const": "instance"
+            },
+            "target_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minimum_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "content_id",
+                  "weight",
+                  "value_cost"
+                ],
+                "properties": {
+                  "content_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "weight": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "value_cost": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "torches": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count_unit",
+            "target_count",
+            "minimum_count",
+            "entries"
+          ],
+          "properties": {
+            "count_unit": {
+              "const": "instance"
+            },
+            "target_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minimum_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "content_id",
+                  "weight",
+                  "value_cost"
+                ],
+                "properties": {
+                  "content_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "weight": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "value_cost": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       "additionalProperties": false
     },
     "regionGeneration": {
       "type": "object",
-      "required": ["layout_profiles", "content_profiles"],
+      "required": [
+        "layout_profiles",
+        "content_profiles"
+      ],
       "properties": {
         "layout_profiles": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/regionLayoutProfile" }
+          "items": {
+            "$ref": "#/$defs/regionLayoutProfile"
+          }
         },
         "content_profiles": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/regionContentProfile" }
+          "items": {
+            "$ref": "#/$defs/regionContentProfile"
+          }
         }
       },
       "additionalProperties": false
     },
     "corePoi": {
       "type": "object",
-      "required": ["template_id", "max_center_offset_cells"],
+      "required": [
+        "template_id",
+        "max_center_offset_cells"
+      ],
       "properties": {
-        "template_id": { "type": "string", "minLength": 1 },
-        "max_center_offset_cells": { "type": "integer", "minimum": 0 }
+        "template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "max_center_offset_cells": {
+          "type": "integer",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
     "regularRegion": {
       "type": "object",
-      "required": ["id", "display_name", "content_profile_id"],
+      "required": [
+        "id",
+        "display_name",
+        "content_profile_id"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "display_name": { "type": "string", "minLength": 1 },
-        "content_profile_id": { "type": "string", "minLength": 1 }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_profile_id": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "additionalProperties": false
     },
     "highRegion": {
       "type": "object",
-      "required": ["id", "display_name", "layout_profile_id", "content_profile_id", "core_poi"],
+      "required": [
+        "id",
+        "display_name",
+        "layout_profile_id",
+        "content_profile_id",
+        "core_poi"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "display_name": { "type": "string", "minLength": 1 },
-        "layout_profile_id": { "type": "string", "minLength": 1 },
-        "content_profile_id": { "type": "string", "minLength": 1 },
-        "core_poi": { "$ref": "#/$defs/corePoi" }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layout_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "core_poi": {
+          "$ref": "#/$defs/corePoi"
+        }
       },
       "additionalProperties": false
     },
     "bossRegion": {
       "type": "object",
-      "required": ["id", "display_name", "layout_profile_id", "content_profile_id", "core_poi", "encounter_profile_id"],
+      "required": [
+        "id",
+        "display_name",
+        "layout_profile_id",
+        "content_profile_id",
+        "core_poi",
+        "encounter_profile_id"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "display_name": { "type": "string", "minLength": 1 },
-        "layout_profile_id": { "type": "string", "minLength": 1 },
-        "content_profile_id": { "type": "string", "minLength": 1 },
-        "core_poi": { "$ref": "#/$defs/corePoi" },
-        "encounter_profile_id": { "type": "string", "minLength": 1 }
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layout_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "core_poi": {
+          "$ref": "#/$defs/corePoi"
+        },
+        "encounter_profile_id": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "additionalProperties": false
     },
     "pveFourRegionLayout": {
       "type": "object",
-      "required": ["mode", "regular", "high_1", "high_2", "boss"],
+      "required": [
+        "mode",
+        "regular",
+        "high_1",
+        "high_2",
+        "boss"
+      ],
       "properties": {
-        "mode": { "const": "pve_four_region_v1" },
-        "regular": { "$ref": "#/$defs/regularRegion" },
-        "high_1": { "$ref": "#/$defs/highRegion" },
-        "high_2": { "$ref": "#/$defs/highRegion" },
-        "boss": { "$ref": "#/$defs/bossRegion" }
+        "mode": {
+          "const": "pve_four_region_v1"
+        },
+        "regular": {
+          "$ref": "#/$defs/regularRegion"
+        },
+        "high_1": {
+          "$ref": "#/$defs/highRegion"
+        },
+        "high_2": {
+          "$ref": "#/$defs/highRegion"
+        },
+        "boss": {
+          "$ref": "#/$defs/bossRegion"
+        }
+      },
+      "additionalProperties": false
+    },
+    "poiOnlyLayout": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "const": "poi_only_v1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "poiOnlyGeneration": {
+      "type": "object",
+      "required": [
+        "content_profiles"
+      ],
+      "properties": {
+        "content_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/regionContentProfile"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "poiOnlyConfig": {
+      "type": "object",
+      "required": [
+        "composition_id",
+        "source_template_id",
+        "region_role",
+        "content_profile_id"
+      ],
+      "properties": {
+        "composition_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "region_role": {
+          "enum": [
+            "regular",
+            "high_1",
+            "high_2",
+            "boss"
+          ]
+        },
+        "content_profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "encounter_profile_id": {
+          "type": "string"
+        },
+        "padding_cells": {
+          "type": "integer",
+          "minimum": 6,
+          "maximum": 32
+        }
       },
       "additionalProperties": false
     }

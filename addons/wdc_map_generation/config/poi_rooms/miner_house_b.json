@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "id": "miner_house_b",
+  "display_name": "矿工小屋·双床隔间",
+  "purpose": "home",
+  "cells": [
+    "#######",
+    "#.....#",
+    "#..#..#",
+    "#..#..#",
+    "#.....#",
+    "#.....#",
+    "#.....#",
+    "#######"
+  ],
+  "rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "anchors": {
+    "primary": {
+      "x": 3,
+      "y": 5
+    }
+  },
+  "ports": [
+    {
+      "id": "front",
+      "cells": [
+        {
+          "x": 3,
+          "y": 7
+        }
+      ],
+      "normal": {
+        "x": 0,
+        "y": 1
+      },
+      "kind": "passage",
+      "group": "entrances",
+      "unused": "open"
+    }
+  ],
+  "slots": [
+    {
+      "id": "bed_left",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 1,
+          "y": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "bed",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "bed_right",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 5,
+          "y": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "bed",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 180
+    },
+    {
+      "id": "storage",
+      "kind": "prop",
+      "points": [
+        {
+          "x": 1,
+          "y": 6
+        }
+      ],
+      "entries": [
+        {
+          "id": "crates",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    },
+    {
+      "id": "light",
+      "kind": "torch",
+      "points": [
+        {
+          "x": 5,
+          "y": 6
+        }
+      ],
+      "entries": [
+        {
+          "id": "world_torch",
+          "weight": 1
+        }
+      ],
+      "min_count": 1,
+      "max_count": 1,
+      "required": true,
+      "rotation": 0
+    }
+  ],
+  "keep_clear": [
+    {
+      "x": 3,
+      "y": 4
+    },
+    {
+      "x": 3,
+      "y": 5
+    },
+    {
+      "x": 3,
+      "y": 6
+    }
+  ]
+}
