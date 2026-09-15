@@ -16,7 +16,7 @@
     "extraction_sites": {
       "count": 1
     },
-    "height_cells": 45,
+    "height_cells": 46,
     "player_spawn": {
       "count": 1
     },
@@ -24,7 +24,7 @@
       "fixed_value": 1,
       "mode": "fixed"
     },
-    "width_cells": 44
+    "width_cells": 39
   },
   "meta": {
     "author": "wdc",

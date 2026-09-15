@@ -19,6 +19,7 @@ func _initialize() -> void:
 			var result: Dictionary = GENERATOR.generate(id, bundle, seed_value)
 			_check(result.valid, "%s seed=%d：%s" % [id, seed_value, JSON.stringify(result.issues)])
 			if result.valid:
+				_check_corridor_enclosure(result.plan)
 				attempts += int(result.plan.diagnostics.attempts)
 				_check(result.plan.primary_anchor == {"x": 0, "y": 0}, "核心锚点应精确落位")
 	print("POI_CORPUS ", JSON.stringify({"elapsed_ms": Time.get_ticks_msec() - start, "attempts": attempts, "compositions": bundle.compositions.size(), "seeds": 32}))
@@ -71,11 +72,16 @@ func _test_geometry() -> void:
 		var corridor: Array = result.plan.connections[0].corridor_cells
 		_check(corridor.size() == 8, "两格宽直通道应为 4×2 格，不能膨胀为三格宽")
 		_check(result.plan.connections[0].width_cells == 2, "实际连接必须保留宽度")
-	composition.nodes[1].position = {"x": 11, "y": 0}
+		_check_corridor_enclosure(result.plan)
+	composition.nodes[1].position = {"x": 15, "y": 0}
 	bundle = COMPILER.compile_bundle({"a": a, "b": b}, {"test": composition})
-	var obstacle: Array = [{"x": 5, "y": -1}, {"x": 5, "y": 0}]
+	var obstacle: Array = [{"x": 7, "y": -1}, {"x": 7, "y": 0}]
 	var detour: Dictionary = GENERATOR.generate("test", bundle, 3, {"blocked_cells": obstacle})
 	_check(detour.valid and detour.plan.connections[0].corridor_cells.size() > 8, "通道应绕过障碍且不穿房墙")
+	if detour.valid:
+		_check_corridor_enclosure(detour.plan)
+	var blocked_side: Dictionary = GENERATOR.generate("test", bundle, 3, {"blocked_cells": [{"x": 3, "y": -2}]})
+	_check(not blocked_side.valid, "门外侧墙占地被阻挡时不能发布敞开走廊")
 	var failed: Dictionary = GENERATOR.generate("test", bundle, 3, {"max_search_nodes": 1, "max_corridor_steps": 1, "blocked_cells": obstacle, "max_attempts": 1})
 	_check(not failed.valid, "搜索额度耗尽应明确失败")
 	connection.style = "direct"
@@ -83,6 +89,9 @@ func _test_geometry() -> void:
 	bundle = COMPILER.compile_bundle({"a": a, "b": b}, {"test": composition})
 	result = GENERATOR.generate("test", bundle, 4)
 	_check(result.valid and result.plan.connections[0].corridor_cells.is_empty(), "直连接缝应相邻逐格打开")
+	connection.style = "corridor"
+	bundle = COMPILER.compile_bundle({"a": a, "b": b}, {"test": composition})
+	_check(not GENERATOR.generate("test", bundle, 4).valid, "走廊不能退化为房间直接拼接")
 	var non_rect: Dictionary = _room("hole")
 	non_rect.cells = ["#####", "#...#", "#.#.#", "#...#", "###  "]
 	non_rect.anchors.primary = {"x": 1, "y": 1}
@@ -96,6 +105,21 @@ func _test_geometry() -> void:
 		_check(result.plan.content_requests[0].cell == {"x": 20, "y": 32}, "物件锚点必须旋转和平移")
 		_check(result.plan.content_requests[0].rotation == 90, "物件朝向必须旋转")
 		_check(result.plan.content_requests[0].group_instance_id == "a:0/crate:0", "请求应有稳定组来源")
+
+
+func _check_corridor_enclosure(plan: Dictionary) -> void:
+	for connection: Dictionary in plan.connections:
+		if connection.style != "corridor":
+			continue
+		_check(connection.corridor_cells.size() >= int(connection.width_cells) * 2, "走廊至少保留两格长度")
+		_check(not connection.get("corridor_wall_cells", []).is_empty(), "走廊应记录实际侧墙")
+		for value: Dictionary in connection.corridor_cells:
+			var cell := Vector2i(value.x, value.y)
+			for direction: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var neighbor: Dictionary = COMPILER.cell(cell + direction)
+				_check(plan.floor_cells.has(neighbor) or plan.wall_cells.has(neighbor), "走廊存在无墙侧边")
+		for wall: Dictionary in connection.corridor_wall_cells:
+			_check(plan.wall_cells.has(wall) and plan.footprint_cells.has(wall) and not plan.floor_cells.has(wall), "走廊侧墙必须进入真实墙体和占地")
 
 
 func _test_invalid() -> void:

@@ -92,7 +92,7 @@
       },
       "mode": "pair",
       "required": true,
-      "style": "direct",
+      "style": "corridor",
       "probability": 1,
       "max_length_cells": 24
     },
@@ -108,7 +108,7 @@
       },
       "mode": "chain",
       "required": true,
-      "style": "direct",
+      "style": "corridor",
       "probability": 1,
       "max_length_cells": 24
     },
@@ -125,7 +125,7 @@
       },
       "mode": "pair",
       "required": true,
-      "style": "direct",
+      "style": "corridor",
       "probability": 1,
       "max_length_cells": 24
     },
@@ -141,7 +141,7 @@
       },
       "mode": "pair",
       "required": false,
-      "style": "direct",
+      "style": "corridor",
       "probability": 1,
       "max_length_cells": 24
     }

@@ -355,6 +355,9 @@ func _test_poi_only_workflow() -> void:
 		await process_frame
 		return
 	var test_key: String = "map/poi_test_refining_workshop"
+	var canonical_poi: Dictionary = preview._current_map_data.poi_instances[0]
+	_expect(editor._result_canvas.display_plan.wall_cells == canonical_poi.wall_cells, "POI Only 预览必须保留整体墙体，包含房间之外的走廊侧墙")
+	_expect(editor._result_canvas.display_plan.floor_cells == canonical_poi.floor_cells, "POI Only 预览必须使用整体 canonical 地板")
 	var config: Dictionary = editor.model.get_document(test_key)
 	_expect(config.get("region_layout", {}).get("mode") == "poi_only_v1" and config.poi_only.source_template_id == template_id, "测试配置必须保留选中的源条目")
 	_expect(preview._current_config_filename == "poi_test_refining_workshop" and preview._current_map_data.poi_instances.size() == 1, "整图预览必须显示真实单 POI 测试地图及其文件名")

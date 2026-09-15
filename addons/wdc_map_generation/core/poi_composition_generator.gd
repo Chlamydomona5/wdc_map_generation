@@ -4,7 +4,7 @@ extends RefCounted
 ## 图纸组装的唯一纯生成入口；预算分配与 authority 实体化由调用方负责。
 const C = preload("poi_blueprint_compiler.gd")
 const DIRECTIONS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
-const ALGORITHM_VERSION: int = 1
+const ALGORITHM_VERSION: int = 2
 
 
 static func generate(composition_id: String, bundle: Dictionary, seed: int, request: Dictionary = {}) -> Dictionary:
@@ -34,7 +34,7 @@ static func generate(composition_id: String, bundle: Dictionary, seed: int, requ
 			"origin": origin, "allowed": _cell_set(request.get("allowed_cells", [])), "blocked": _cell_set(request.get("blocked_cells", [])),
 			"limits": limits, "diagnostic": diagnostic, "attempt_nodes": 0, "corridor_steps": 0,
 		}
-		var state: Dictionary = {"rooms": {}, "occupied": {}, "used": {}, "connections": [], "done": {}}
+		var state: Dictionary = {"rooms": {}, "occupied": {}, "clearance": {}, "used": {}, "connections": [], "done": {}}
 		var solved: Dictionary = _place_roots(state, context)
 		if solved.is_empty():
 			continue
@@ -206,7 +206,8 @@ static func _search(state: Dictionary, context: Dictionary) -> Dictionary:
 					if not _compatible(port, local_port):
 						continue
 					var width: int = port.points.size()
-					var distances: Array = [1] if edge.style == "direct" else [width + 1, width + 3, width + 5, width + 7]
+					var gap: int = maxi(width, 2)
+					var distances: Array = [1] if edge.style == "direct" else [gap + 1, gap + 3, gap + 5, gap + 7]
 					var tangents: Array = [0] if edge.style == "direct" else [0, width + 1, -width - 1, width * 2 + 2, -width * 2 - 2]
 					for distance: int in distances:
 						if distance > int(edge.max_length):
@@ -243,7 +244,7 @@ static func _try_connection(state: Dictionary, context: Dictionary, edge: Dictio
 	var next: Dictionary = state.duplicate(true)
 	if add_room:
 		_add_room(next, other)
-	var route: Dictionary = _route(port, other_port, edge, next.occupied, context)
+	var route: Dictionary = _route(port, other_port, edge, next, context)
 	if not route.valid:
 		return {}
 	next.used[str(known.id) + "/" + str(port.id)] = true
@@ -253,24 +254,31 @@ static func _try_connection(state: Dictionary, context: Dictionary, edge: Dictio
 		"from": {"room_instance_id": other.id if reverse else known.id, "port_id": other_port.id if reverse else port.id},
 		"to": {"room_instance_id": known.id if reverse else other.id, "port_id": port.id if reverse else other_port.id},
 		"style": edge.style, "width_cells": port.points.size(), "corridor_cells": _json_cells(route.points),
+		"corridor_wall_cells": _json_cells(route.get("walls", [])),
 		"port_cells": _json_cells(port.points + other_port.points)})
-	# 已生成通道对后续房间也是占地约束，通道之间可以相交。
+	# 走廊地板和包边墙共同占地；后续走廊可相交，后续房间不能覆盖侧墙。
 	for point: Vector2i in route.points:
+		next.occupied[point] = "corridor"
+	for point: Vector2i in route.get("walls", []):
 		if not next.occupied.has(point):
-			next.occupied[point] = "corridor"
+			next.occupied[point] = "corridor_wall"
 	return _search(next, context)
 
 
-static func _route(a: Dictionary, b: Dictionary, edge: Dictionary, occupied: Dictionary, context: Dictionary) -> Dictionary:
+static func _route(a: Dictionary, b: Dictionary, edge: Dictionary, state: Dictionary, context: Dictionary) -> Dictionary:
 	var adjacent: bool = true
 	var b_set: Dictionary = _vector_cell_set(b.points)
 	for point: Vector2i in a.points:
 		adjacent = adjacent and b_set.has(point + a.direction)
 	if adjacent:
-		return {"valid": true, "points": []}
+		return {"valid": edge.style == "direct", "points": []}
 	if edge.style == "direct":
 		return {"valid": false}
 	var width: int = a.points.size()
+	var apertures: Dictionary = _vector_cell_set(a.points + b.points)
+	for port: Dictionary in [a, b]:
+		for point: Vector2i in port.points:
+			apertures[point + port.direction] = true
 	var start: Vector2i = _brush_start(a)
 	var finish: Vector2i = _brush_start(b)
 	if _manhattan(start, finish) + width > int(edge.max_length):
@@ -283,12 +291,12 @@ static func _route(a: Dictionary, b: Dictionary, edge: Dictionary, occupied: Dic
 		path.append_array(tail)
 		var valid: bool = true
 		for base: Vector2i in path:
-			if not _brush_fits(base, width, occupied, context):
+			if not _brush_fits(base, width, state, context, apertures):
 				valid = false
 				break
 		if valid:
-			return {"valid": true, "points": _brush_path(path, width)}
-	if not _brush_fits(start, width, occupied, context) or not _brush_fits(finish, width, occupied, context):
+			return _corridor_result(path, width, state, apertures)
+	if not _brush_fits(start, width, state, context, apertures) or not _brush_fits(finish, width, state, context, apertures):
 		return {"valid": false}
 	var queue: Array[Vector2i] = [start]
 	var previous: Dictionary = {start: start}
@@ -303,13 +311,13 @@ static func _route(a: Dictionary, b: Dictionary, edge: Dictionary, occupied: Dic
 			var path: Array = [finish]
 			while path.back() != start:
 				path.append(previous[path.back()])
-			return {"valid": true, "points": _brush_path(path, width)}
+			return _corridor_result(path, width, state, apertures)
 		for direction: Vector2i in DIRECTIONS:
 			var next: Vector2i = point + direction
 			var distance: int = int(distances[point]) + 1
 			if previous.has(next) or distance + _manhattan(next, finish) + width > int(edge.max_length):
 				continue
-			if _brush_fits(next, width, occupied, context):
+			if _brush_fits(next, width, state, context, apertures):
 				previous[next] = point
 				distances[next] = distance
 				queue.append(next)
@@ -332,13 +340,51 @@ static func _brush_start(port: Dictionary) -> Vector2i:
 	return point
 
 
-static func _brush_fits(base: Vector2i, width: int, occupied: Dictionary, context: Dictionary) -> bool:
+static func _brush_fits(base: Vector2i, width: int, state: Dictionary, context: Dictionary, apertures: Dictionary) -> bool:
 	for y: int in range(width):
 		for x: int in range(width):
 			var point: Vector2i = base + Vector2i(x, y)
-			if (occupied.has(point) and occupied[point] != "corridor") or not _in_bounds(point, context):
+			if (state.occupied.has(point) and state.occupied[point] not in ["corridor", "corridor_wall"]) or not _in_bounds(point, context):
 				return false
+	# 每段寻路同时检查一格包边，拐角也保留结构墙；只在声明的门口接入房间。
+	for y: int in range(-1, width + 1):
+		for x: int in range(-1, width + 1):
+			if x >= 0 and x < width and y >= 0 and y < width:
+				continue
+			var point: Vector2i = base + Vector2i(x, y)
+			if apertures.has(point):
+				continue
+			if not _in_bounds(point, context):
+				return false
+			var owner: String = str(state.occupied.get(point, ""))
+			if owner in ["corridor", "corridor_wall"]:
+				continue
+			if state.clearance.has(point):
+				return false
+			if not owner.is_empty():
+				var room: Dictionary = state.rooms[owner]
+				if room.raster[point] != "#":
+					return false
+				for port: Dictionary in room.ports.values():
+					if port.points.has(point) and (port.unused == "open" or state.used.has(owner + "/" + str(port.id))):
+						return false
 	return true
+
+
+static func _corridor_result(path: Array, width: int, state: Dictionary, apertures: Dictionary) -> Dictionary:
+	var points: Array = _brush_path(path, width)
+	if points.size() < width * 2:
+		return {"valid": false}
+	var floors: Dictionary = _vector_cell_set(points)
+	var walls: Dictionary = {}
+	for point: Vector2i in points:
+		for y: int in range(-1, 2):
+			for x: int in range(-1, 2):
+				var neighbor: Vector2i = point + Vector2i(x, y)
+				if floors.has(neighbor) or apertures.has(neighbor) or state.occupied.get(neighbor, "") == "corridor":
+					continue
+				walls[neighbor] = true
+	return {"valid": true, "points": points, "walls": walls.keys()}
 
 
 static func _brush_path(path: Array, width: int) -> Array:
@@ -385,6 +431,12 @@ static func _add_room(state: Dictionary, room: Dictionary) -> void:
 	state.rooms[room.id] = room
 	for point: Vector2i in room.raster:
 		state.occupied[point] = room.id
+	for point: Vector2i in _transform_cells(room.source.keep_clear, room.rotation, room.offset):
+		state.clearance[point] = true
+	for port: Dictionary in room.ports.values():
+		if port.unused == "open":
+			for point: Vector2i in port.points:
+				state.clearance[point + port.direction] = true
 
 
 static func _ports(room: Dictionary, endpoint: Dictionary, used: Dictionary) -> Array:
@@ -456,6 +508,13 @@ static func _finalize(state: Dictionary, context: Dictionary, bundle: Dictionary
 		for point: Vector2i in _vectors(connection.corridor_cells):
 			floor_cells[point] = true
 			keep_clear[point] = true
+	for connection: Dictionary in state.connections:
+		var walls: Array[Vector2i] = []
+		for point: Vector2i in _vectors(connection.get("corridor_wall_cells", [])):
+			if not floor_cells.has(point):
+				wall_cells[point] = true
+				walls.append(point)
+		connection["corridor_wall_cells"] = _json_cells(walls)
 	for entrance: Dictionary in exterior_entries:
 		if wall_cells.has(entrance.cell) or not _in_bounds(entrance.cell, context):
 			return _failure(entrance.path, "外部入口被其他房墙或占地边界封住", "poi_port_clearance")

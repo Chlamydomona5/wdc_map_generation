@@ -587,7 +587,7 @@ func _field_options(key: String, path: Array) -> Array:
 	if field == "mode":
 		return [{"value": "pair", "label": "一对一"}, {"value": "fan_out", "label": "逐个接入"}, {"value": "chain", "label": "顺序串联"}]
 	if field == "style":
-		return [{"value": "direct", "label": "直接对接"}, {"value": "corridor", "label": "通道连接"}]
+		return [{"value": "direct", "label": "直接对接"}, {"value": "corridor", "label": "走廊（含侧墙）"}]
 	if field == "instance":
 		return ["first", "last"]
 	if field == "kind" and path.has("slots"):
@@ -1310,13 +1310,9 @@ func _show_map_result(generated: RefCounted, seed_value: int, source: Dictionary
 	_result_list.add_item("%s · %d 个 POI" % [title, generated.poi_instances.size()])
 	for poi: Dictionary in generated.poi_instances:
 		if str(poi.get("layout_kind", "")) == "authored_rooms":
-			var plan: Dictionary = {"rooms": poi.get("rooms", []).duplicate(true), "floor_cells": [], "wall_cells": [], "ports": [], "anchors": poi.get("named_anchors", {}), "slots": []}
+			var plan: Dictionary = {"rooms": poi.get("rooms", []).duplicate(true), "floor_cells": poi.get("floor_cells", []).duplicate(true), "wall_cells": poi.get("wall_cells", []).duplicate(true), "footprint_cells": poi.get("footprint_cells", []).duplicate(true), "ports": [], "anchors": poi.get("named_anchors", {}), "slots": []}
 			for room: Dictionary in poi.get("rooms", []):
-				plan.floor_cells.append_array(room.get("floor_cells", []))
-				plan.wall_cells.append_array(room.get("wall_cells", []))
 				plan.ports.append_array(room.get("ports", []))
-			for connection: Dictionary in poi.get("connections", []):
-				plan.floor_cells.append_array(connection.get("corridor_cells", []))
 			for request: Dictionary in poi.get("content_plans", []):
 				plan.slots.append(_content_display(request))
 			_result_canvas.show_plan(plan)
