@@ -214,6 +214,7 @@ static func _build_slot_snapshots_from_definition(
 	}]
 
 
+## 方法职责：按 `max_count - count + 1` 权重解析数量，并保持 seeded RNG 可复现。
 static func _resolve_weighted_count(
 	min_count: int,
 	max_count: int,

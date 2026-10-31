@@ -1,6 +1,6 @@
 {
 	"cell_size_m": 1.0,
-	"content_hash": "1410d132048534bd555d1ecb0a4220675bd3b9b638b10f77496eb7953d4ab325",
+	"content_hash": "9e2122b45d4ffa679415283c794e7cbb2bb657dbeb99f4a644e071499bb28d84",
 	"entries": [
 		{
 			"available": true,
@@ -431,7 +431,7 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "6f504c81e1e6253b42f5aa5f52fbafe195fa5b4f734ee01eec8a4c0a233bb004"
+				"monster_catalog": "cbf0a55bf99e0fe2e0cd18c9608ddb3fd81f3af86b19a52035ed73fc5acf9b5a"
 			}
 		},
 		{
@@ -449,7 +449,7 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "fe9857d9ea12e0393aef59246c0fcf72a425e49d40a2312845f0284e11a074bc"
+				"monster_catalog": "45810319e9c7a4a0db69f718b0dc3630bdb82ce384d644cd3bd1ba71b01490c6"
 			}
 		},
 		{
@@ -467,7 +467,7 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "e35127ab966e8eff5f28e96ba9aa66f3e740703b2a1f50154d3f85af3d97a177"
+				"monster_catalog": "444925593feb72755c3ffeb7c9db85781aa0a8a60818f967d4e292d298715e0e"
 			}
 		},
 		{
@@ -485,7 +485,7 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "7da9351a60cddfd5cd65ebe84e0697edd4e8c0a7d6bf50a9208de9e4fa70eb34"
+				"monster_catalog": "b11a2111db2077601516e9d702c937c4339932966f0decbb8f25afd07e8dfbe8"
 			}
 		},
 		{
@@ -503,7 +503,7 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "5c8b303f5d230c60bf8541c6d90a4e75430abc46b7a9ed25cc1f50ee6b1b6492"
+				"monster_catalog": "0ac146825dd5ed96bfa8c266130d9f6aa26cd60fe252bbdd040c8553a1c7d665"
 			}
 		},
 		{
