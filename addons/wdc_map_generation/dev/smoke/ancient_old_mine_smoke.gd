@@ -592,7 +592,7 @@ func _validate_poi_wall_integrity(map_data: Variant, config: Variant, plan: Vari
 			var profile: Dictionary = config.try_get_region_content_profile(region.content_profile_id)
 			var durability: Dictionary = profile.get("wall_durability", {}) as Dictionary
 			_expect(
-				cell.durability_override_max_hit_points == int(durability.get("poi_max_hit_points", 0)),
+				cell.max_hit_points == int(durability.get("poi_max_hit_points", 0)),
 				"POI 墙必须使用所属区域 profile 的耐久：%d,%d" % [x, y]
 			)
 	_expect(protected_wall_count > 0, "古代旧矿必须保留可验证的受保护 POI 墙")
@@ -703,6 +703,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	(clipped_reward_profile.get("camps", {}) as Dictionary)["entries"] = [
 		{"camp_id": "miner_settlement_supply_camp", "weight": 1.0, "value_cost": 4},
 	]
+	_relax_other_room_content_minimums(clipped_reward_config, "ancient_old_mine_high_1_content")
 	var clipped_reward_map = map_data.deep_clone()
 	_clear_room_content_plans(clipped_reward_map)
 	var clipped_reward_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -786,6 +787,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	(camp_budget_profile.get("camps", {}) as Dictionary)["entries"] = [
 		{"camp_id": "miner_settlement_side_supply", "weight": 1.0, "value_cost": 2},
 	]
+	_relax_other_room_content_minimums(camp_budget_config, "ancient_old_mine_high_1_content")
 	var insufficient_camp_budget_config = camp_budget_config.deep_clone()
 	var insufficient_camp_profile: Dictionary = _find_profile(
 		insufficient_camp_budget_config.region_generation.get("content_profiles", []),
@@ -896,6 +898,7 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 	(nest_profile.get("camps", {}) as Dictionary)["target_count"] = 0
 	(nest_profile.get("camps", {}) as Dictionary)["minimum_count"] = 0
 	(nest_profile.get("camps", {}) as Dictionary)["entries"] = []
+	_relax_other_room_content_minimums(nest_config, "ancient_old_mine_high_1_content")
 	var nest_map = map_data.deep_clone()
 	_clear_room_content_plans(nest_map)
 	var nest_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -939,6 +942,20 @@ func _test_value_budget_enforcement(generator: Variant, map_data: Variant, confi
 		_expect(str(site.get("site_kind", "")) == "nest", "nest room plan 必须物化为 nest site")
 		_expect(str(site.get("site_id", "")) == nest_plan_id, "nest site 必须回写稳定 site_id")
 	_expect(materialized_nest_count == 1, "强制 nest room plan 必须恰好物化一次")
+
+
+## 预算夹具只验证 high_1：清空图纸计划后，其他区域不再有图纸预留的房间内容名额，
+## 它们的 minimum 取决于普通 POI 数量，与被测预算无关，所以在夹具里放宽。
+func _relax_other_room_content_minimums(config: Variant, kept_profile_id: String) -> void:
+	for profile_value: Variant in config.region_generation.get("content_profiles", []):
+		if not (profile_value is Dictionary):
+			continue
+		var profile: Dictionary = profile_value as Dictionary
+		if str(profile.get("id", "")) == kept_profile_id:
+			continue
+		var room_contents: Variant = profile.get("room_contents", {})
+		if room_contents is Dictionary:
+			(room_contents as Dictionary)["minimum_count"] = 0
 
 
 func _clear_room_content_plans(map_data: Variant) -> void:

@@ -141,5 +141,8 @@ static func _is_layer_durability_tile(tile_type: int) -> bool:
 			return true
 		WdcMapGenerationTypes.ServerTileType.GOLD_BLOCK:
 			return true
+		WdcMapGenerationTypes.ServerTileType.POI_WALL:
+			# 四区域按区域 profile 写入 POI 墙耐久；legacy 不写 override，仍取默认值。
+			return true
 	return false
 
