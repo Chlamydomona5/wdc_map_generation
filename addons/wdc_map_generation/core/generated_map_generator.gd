@@ -1922,6 +1922,8 @@ func _apply_four_region_durability(
 				wall_kind
 			)
 			WdcMapGenerationTileRules.refresh_cell_runtime_state(cell)
+			# 新生成的墙没有损伤：区域 override 抬高上限后，refresh 只夹取当前值，必须补满。
+			cell.current_hit_points = cell.max_hit_points
 
 
 func _generate_four_region_spawn_and_extraction(

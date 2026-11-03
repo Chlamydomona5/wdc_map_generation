@@ -595,6 +595,10 @@ func _validate_poi_wall_integrity(map_data: Variant, config: Variant, plan: Vari
 				cell.max_hit_points == int(durability.get("poi_max_hit_points", 0)),
 				"POI 墙必须使用所属区域 profile 的耐久：%d,%d" % [x, y]
 			)
+			_expect(
+				cell.current_hit_points == cell.max_hit_points,
+				"新生成的 POI 墙必须满耐久：%d,%d 为 %d/%d" % [x, y, cell.current_hit_points, cell.max_hit_points]
+			)
 	_expect(protected_wall_count > 0, "古代旧矿必须保留可验证的受保护 POI 墙")
 
 
