@@ -7,7 +7,7 @@
   "required": ["schema_version", "generator", "cell_size_m", "content_hash", "entries", "population_limits"],
   "properties": {
     "schema_version": {"const": 1},
-    "generator": {"const": "DataPoiContentCapabilities"},
+    "generator": {"const": "export_poi_content_capabilities_tool"},
     "cell_size_m": {"type": "number", "exclusiveMinimum": 0},
     "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},

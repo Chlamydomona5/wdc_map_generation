@@ -1,6 +1,7 @@
 extends SceneTree
 
 const DOCUMENT = preload("../../preview/scripts/poi_editor_document.gd")
+const LAUNCHER = preload("../../preview/scripts/poi_test_game_launcher.gd")
 const STORE = preload("../../preview/scripts/poi_editor_file_store.gd")
 const EDITOR = preload("../../preview/scripts/poi_room_editor.gd")
 const COMPILER = preload("../../core/poi_blueprint_compiler.gd")
@@ -23,10 +24,10 @@ class FailingDraftStore:
 
 class RecordingGameLauncher:
 	extends RefCounted
-	var filenames: Array[String] = []
+	var launches: Array = []
 
-	func launch_saved_map_test(filename: String) -> Dictionary:
-		filenames.append(filename)
+	func launch_saved_map_test(filename: String, seed_value: int = 0) -> Dictionary:
+		launches.append([filename, seed_value])
 		return {"ok": true, "pid": 1, "error": ""}
 
 
@@ -46,6 +47,7 @@ func _run() -> void:
 	await _test_editor()
 	await _test_formal_entry()
 	await _test_poi_only_workflow()
+	_test_launch_arguments()
 	if _failures.is_empty():
 		print("poi_room_editor_smoke: PASS document / gesture / raster / rotation / structured creation / local conflicts / save reload / multi-seed / full map hash / source navigation / POI Only preview-save-launch / conflict / recovery / formal entry")
 		quit(0)
@@ -363,7 +365,7 @@ func _test_poi_only_workflow() -> void:
 	_expect(preview._current_config_filename == "poi_test_refining_workshop" and preview._current_map_data.poi_instances.size() == 1, "整图预览必须显示真实单 POI 测试地图及其文件名")
 	_expect(str(preview._config_selector.get_item_metadata(preview._config_selector.selected)) == "poi_test_refining_workshop", "整图下拉框必须同步为当前生成的测试地图")
 	_expect(editor._map_key == "map/ancient_old_mine" and str(editor._template_selector.get_item_metadata(editor._template_selector.selected)) == template_id, "生成测试图不能替换源地图或丢失所选条目")
-	_expect(not FileAccess.file_exists(editor.store.document_path(test_key)) and launcher.filenames.is_empty(), "仅生成预览不能提前写正式文件或启动游戏")
+	_expect(not FileAccess.file_exists(editor.store.document_path(test_key)) and launcher.launches.is_empty(), "仅生成预览不能提前写正式文件或启动游戏")
 	await process_frame
 	await process_frame
 	var canvas: Control = editor._result_canvas
@@ -379,15 +381,42 @@ func _test_poi_only_workflow() -> void:
 	var baseline_hash: String = editor.model.baseline_hashes["map/ancient_old_mine"]
 	editor.model.baseline_hashes["map/ancient_old_mine"] = "external_change"
 	await editor._save_and_launch_poi_only()
-	_expect(launcher.filenames.is_empty() and not FileAccess.file_exists(editor.store.document_path(test_key)), "关联保存冲突必须阻止启动正式游戏")
+	_expect(launcher.launches.is_empty() and not FileAccess.file_exists(editor.store.document_path(test_key)), "关联保存冲突必须阻止启动正式游戏")
 	editor.model.baseline_hashes["map/ancient_old_mine"] = baseline_hash
 	await editor._save_and_launch_poi_only()
-	_expect(launcher.filenames == ["poi_test_refining_workshop"] and not editor.model.is_dirty(), "保存成功后应只把测试文件名交给正式启动器")
+	_expect(launcher.launches == [["poi_test_refining_workshop", int(editor._seed_input.value)]] and not editor.model.is_dirty(), "保存成功后应只把测试文件名与种子交给正式启动器")
 	var reloaded: Dictionary = editor.store.load_project()
 	_expect(reloaded.documents.has(test_key) and reloaded.documents[test_key].poi_only.composition_id == "refining_workshop", "关联事务必须保存可重新加载的测试地图")
 	editor._draft_timer.stop()
 	preview.queue_free()
 	await process_frame
+
+
+## 启动器只认 WDC 主干目录结构，只交接已保存且主干支持布局的档案文件名。
+func _test_launch_arguments() -> void:
+	var root_path: String = ProjectSettings.globalize_path("user://poi_editor_smoke/launch/%d" % Time.get_ticks_usec())
+	var profiles: String = root_path.path_join(LAUNCHER.PROFILE_SUBDIRECTORY)
+	DirAccess.make_dir_recursive_absolute(profiles)
+	DirAccess.make_dir_recursive_absolute(root_path.path_join("scenes/app"))
+	_write_text(root_path.path_join("project.godot"), "")
+	_expect(LAUNCHER.build_launch_arguments("poi_test_demo", 7, root_path).is_empty(), "缺少主干正式入口时不能启动")
+	_write_text(root_path.path_join("scenes/app/main.tscn"), "")
+	_write_text(profiles.path_join("poi_test_demo.json"), JSON.stringify({"id": "poi_test_demo", "region_layout": {"mode": "poi_only_v1"}}))
+	_write_text(profiles.path_join("legacy_demo.json"), JSON.stringify({"id": "legacy_demo"}))
+	var expected := PackedStringArray(["--path", root_path, LAUNCHER.FORMAL_ENTRY_SCENE, "--", "--map-profile=poi_test_demo", "--map-seed=7"])
+	_expect(LAUNCHER.build_launch_arguments("poi_test_demo.json", 7, root_path) == expected, "主干启动参数必须是正式入口加 --map-profile 与 --map-seed")
+	_expect(LAUNCHER.build_launch_arguments("poi_test_demo", 0, root_path) == expected.slice(0, 5), "没有种子时不能传 --map-seed")
+	_expect(LAUNCHER.resolve_main_project_root(root_path.path_join("map_generation")) == root_path, "从嵌套子模块目录必须找到主干根目录")
+	for rejected: String in ["missing_demo", "legacy_demo", "../poi_test_demo", "poi test"]:
+		_expect(LAUNCHER.build_launch_arguments(rejected, 7, root_path).is_empty(), "未保存、旧布局或非法文件名不能启动：" + rejected)
+
+
+func _write_text(path: String, text: String) -> void:
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	_expect(file != null, "测试文件必须可写：" + path)
+	if file != null:
+		file.store_string(text)
+		file.close()
 
 
 func _capture(filename: String) -> void:

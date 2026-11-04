@@ -1,87 +1,7 @@
 {
 	"cell_size_m": 1.0,
-	"content_hash": "9e2122b45d4ffa679415283c794e7cbb2bb657dbeb99f4a644e071499bb28d84",
+	"content_hash": "4f91855d9a1e19e359965a9a9e26adab43613d21485dd0f1906cd9ff6ac8749f",
 	"entries": [
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map"
-			],
-			"display_name": "large_gold_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "large_gold_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "61dfcf0659ed2e34412b8f503ed8d44237845005ebabcb403531af05c396b87a"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map"
-			],
-			"display_name": "large_gold_side_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "large_gold_side_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "d040d2732475106e49e2179c5812067018f8ce0e78e1c03c72517d28ee1aa3c9"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map"
-			],
-			"display_name": "medium_amethyst_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "medium_amethyst_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "2657923cf6be47000ecdcc5db5cd46e147f57f544b9d6930c910aec21784a170"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map"
-			],
-			"display_name": "medium_amethyst_side_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "medium_amethyst_side_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "8404e26f308b30b30b74df68c53d1096ee7ea794142980ced709eae27bf92232"
-			}
-		},
 		{
 			"available": true,
 			"clearance_cells": [],
@@ -206,70 +126,7 @@
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [
-				"default_generated_map"
-			],
-			"display_name": "small_turquoise_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "small_turquoise_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "cdc96755b8326da0702a70cc65e953d25891174046aff09fef18dff490b7e760"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map"
-			],
-			"display_name": "small_turquoise_side_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "small_turquoise_side_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "aab7b59968606b97ef565f52e0fb5fc35fbc07bad5048ceb2a846a1da8dc8ad7"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"smoke_camp_generated_map"
-			],
-			"display_name": "smoke_guarded_chest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "smoke_guarded_chest",
-			"kind": "camp",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"smoke_camp_generated_map": "c8532cf9a2d70318495539a80517e0530ae7eacf5b2bc0794f7a8a7f7448f5f8"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"ancient_old_mine",
-				"default_generated_map",
-				"small_map",
-				"trap_playground"
+				"ancient_old_mine"
 			],
 			"display_name": "common_mineral",
 			"footprint_cells": [
@@ -282,97 +139,14 @@
 			"kind": "mineral",
 			"placement_surface": "wall",
 			"source_hashes": {
-				"ancient_old_mine": "2384e990c18c2e438204c2dfc49e892bc010e63945746dd68478f16f47fb616a",
-				"default_generated_map": "2384e990c18c2e438204c2dfc49e892bc010e63945746dd68478f16f47fb616a",
-				"small_map": "2384e990c18c2e438204c2dfc49e892bc010e63945746dd68478f16f47fb616a",
-				"trap_playground": "cc1fd06649f72a2a6c6bfa885e0f577a1799f1e1f243be16fee364a864051e04"
+				"ancient_old_mine": "2384e990c18c2e438204c2dfc49e892bc010e63945746dd68478f16f47fb616a"
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [
-				"default_generated_map",
-				"small_map",
-				"smoke_camp_generated_map",
-				"smoke_generated_map",
-				"smoke_map_view_temp",
-				"smoke_map_view_trace_generated_map",
-				"smoke_nest_generated_map"
-			],
-			"display_name": "large_poi_mineral",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "large_poi_mineral",
-			"kind": "mineral",
-			"placement_surface": "wall",
-			"source_hashes": {
-				"default_generated_map": "6047c8e5db8d72bff83674aea1aafc7d2864a7d5095bd405496b63427382f530",
-				"small_map": "6047c8e5db8d72bff83674aea1aafc7d2864a7d5095bd405496b63427382f530",
-				"smoke_camp_generated_map": "37bfc29761e1ec166757f17beb83e887291c75ff56dab8b38416afc72d63f572",
-				"smoke_generated_map": "37bfc29761e1ec166757f17beb83e887291c75ff56dab8b38416afc72d63f572",
-				"smoke_map_view_temp": "bd7d1ca2930c3156dc05e1ee8cd36cd6fb448aa91a52514aa38827aeea6645c4",
-				"smoke_map_view_trace_generated_map": "bd7d1ca2930c3156dc05e1ee8cd36cd6fb448aa91a52514aa38827aeea6645c4",
-				"smoke_nest_generated_map": "88fac9d4ee58f178f1afcb80b7761ce97c74ae1907cff8149ad5e70ca4b0abbd"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map",
-				"smoke_map_view_temp",
-				"smoke_map_view_trace_generated_map"
-			],
-			"display_name": "medium_poi_mineral",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "medium_poi_mineral",
-			"kind": "mineral",
-			"placement_surface": "wall",
-			"source_hashes": {
-				"default_generated_map": "6cb24c7cf446aa02190eb88ca51739af4c4b3d3a37e787b2f145c935caf55ab8",
-				"small_map": "6cb24c7cf446aa02190eb88ca51739af4c4b3d3a37e787b2f145c935caf55ab8",
-				"smoke_map_view_temp": "ce745d3ad9b05bf9d3d79618a1f145f811130beacb701843409124bc71bbad9d",
-				"smoke_map_view_trace_generated_map": "ce745d3ad9b05bf9d3d79618a1f145f811130beacb701843409124bc71bbad9d"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"smoke_mineral_cluster_generated_map"
-			],
-			"display_name": "mineral_wall_cluster",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "mineral_wall_cluster",
-			"kind": "mineral",
-			"placement_surface": "wall",
-			"source_hashes": {
-				"smoke_mineral_cluster_generated_map": "f0c0d0a28b4d24e3bcb8e3704096f7fdea0fc8d0d59be6416501f9a1b4c542f9"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"ancient_old_mine",
-				"default_generated_map",
-				"small_map"
+				"ancient_old_mine"
 			],
 			"display_name": "rare_mineral",
 			"footprint_cells": [
@@ -385,42 +159,14 @@
 			"kind": "mineral",
 			"placement_surface": "wall",
 			"source_hashes": {
-				"ancient_old_mine": "f39abca9b243128532d1044b597ad1620bfdfb2adfb765c5e970da23433b1f84",
-				"default_generated_map": "e1b39a22938d5a1e3b99a4aedc61b33221b1af018b4aa88ca2d063655928a950",
-				"small_map": "e1b39a22938d5a1e3b99a4aedc61b33221b1af018b4aa88ca2d063655928a950"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map",
-				"smoke_map_view_temp",
-				"smoke_map_view_trace_generated_map"
-			],
-			"display_name": "small_poi_mineral",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "small_poi_mineral",
-			"kind": "mineral",
-			"placement_surface": "wall",
-			"source_hashes": {
-				"default_generated_map": "f810862adb9bf96bd9469658c5fee2b203c4b59f0e83bf681e4861ebeecdc85a",
-				"small_map": "f810862adb9bf96bd9469658c5fee2b203c4b59f0e83bf681e4861ebeecdc85a",
-				"smoke_map_view_temp": "73c03027d208e4abc87c63cf54954525b61931b71ed939daebf3459c7e419322",
-				"smoke_map_view_trace_generated_map": "73c03027d208e4abc87c63cf54954525b61931b71ed939daebf3459c7e419322"
+				"ancient_old_mine": "f39abca9b243128532d1044b597ad1620bfdfb2adfb765c5e970da23433b1f84"
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "潜地蠕虫",
+			"display_name": "burrower_worm",
 			"footprint_cells": [
 				[
 					0,
@@ -431,14 +177,14 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "cbf0a55bf99e0fe2e0cd18c9608ddb3fd81f3af86b19a52035ed73fc5acf9b5a"
+
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "爆裂怪",
+			"display_name": "exploder",
 			"footprint_cells": [
 				[
 					0,
@@ -449,14 +195,14 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "45810319e9c7a4a0db69f718b0dc3630bdb82ce384d644cd3bd1ba71b01490c6"
+
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "食尸鬼",
+			"display_name": "ghoul",
 			"footprint_cells": [
 				[
 					0,
@@ -467,14 +213,68 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "444925593feb72755c3ffeb7c9db85781aa0a8a60818f967d4e292d298715e0e"
+
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "骷髅弓箭手",
+			"display_name": "guard",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "guard",
+			"kind": "monster",
+			"placement_surface": "floor",
+			"source_hashes": {
+
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [],
+			"display_name": "mimic_ore",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "mimic_ore",
+			"kind": "monster",
+			"placement_surface": "floor",
+			"source_hashes": {
+
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [],
+			"display_name": "monster",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "monster",
+			"kind": "monster",
+			"placement_surface": "floor",
+			"source_hashes": {
+
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [],
+			"display_name": "skeleton_archer",
 			"footprint_cells": [
 				[
 					0,
@@ -485,14 +285,14 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "b11a2111db2077601516e9d702c937c4339932966f0decbb8f25afd07e8dfbe8"
+
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "岩心巨像",
+			"display_name": "stone_golem",
 			"footprint_cells": [
 				[
 					0,
@@ -503,41 +303,32 @@
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"monster_catalog": "0ac146825dd5ed96bfa8c266130d9f6aa26cd60fe252bbdd040c8553a1c7d665"
+
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map"
-			],
-			"display_name": "burrower_worm_single",
+			"config_ids": [],
+			"display_name": "stone_shard",
 			"footprint_cells": [
 				[
 					0,
 					0
 				]
 			],
-			"id": "burrower_worm_single",
-			"kind": "monster_pack",
+			"id": "stone_shard",
+			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"default_generated_map": "428d980a8d9c3d4cddf264c9f54f51c73967a45cc31867e006d6c755f4a3d1bb",
-				"small_map": "428d980a8d9c3d4cddf264c9f54f51c73967a45cc31867e006d6c755f4a3d1bb"
+
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [
-				"ancient_old_mine",
-				"default_generated_map",
-				"small_map",
-				"smoke_camp_generated_map",
-				"smoke_generated_map",
-				"trap_playground"
+				"ancient_old_mine"
 			],
 			"display_name": "ghoul_single",
 			"footprint_cells": [
@@ -550,21 +341,14 @@
 			"kind": "monster_pack",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"ancient_old_mine": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3",
-				"default_generated_map": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3",
-				"small_map": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3",
-				"smoke_camp_generated_map": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3",
-				"smoke_generated_map": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3",
-				"trap_playground": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3"
+				"ancient_old_mine": "d2c8aaee743e4ae9a0820cced9032fc8cc032db06aecc0f2760909e39c4588e3"
 			}
 		},
 		{
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [
-				"ancient_old_mine",
-				"default_generated_map",
-				"small_map"
+				"ancient_old_mine"
 			],
 			"display_name": "skeleton_archer_single",
 			"footprint_cells": [
@@ -577,101 +361,7 @@
 			"kind": "monster_pack",
 			"placement_surface": "floor",
 			"source_hashes": {
-				"ancient_old_mine": "1268edf0f7568f44c42fdca8ccced72ecb22eae535cfcaa6bc1f12edb1e0bfb6",
-				"default_generated_map": "1268edf0f7568f44c42fdca8ccced72ecb22eae535cfcaa6bc1f12edb1e0bfb6",
-				"small_map": "1268edf0f7568f44c42fdca8ccced72ecb22eae535cfcaa6bc1f12edb1e0bfb6"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map"
-			],
-			"display_name": "turquoise_guard_single",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "turquoise_guard_single",
-			"kind": "monster_pack",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "c99761168472926b49d2ef385d8b4af61a016a196d6659c3499243dabc83dc00",
-				"small_map": "c99761168472926b49d2ef385d8b4af61a016a196d6659c3499243dabc83dc00"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map"
-			],
-			"display_name": "amethyst_nest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "amethyst_nest",
-			"kind": "nest",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "7de5a83e512eca80330f1920112e8491d4aced46749486159237a4bc4c15e18d",
-				"small_map": "7de5a83e512eca80330f1920112e8491d4aced46749486159237a4bc4c15e18d"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map",
-				"smoke_generated_map",
-				"smoke_nest_generated_map"
-			],
-			"display_name": "ghoul_nest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "ghoul_nest",
-			"kind": "nest",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "fb3ce27f1662b9ca7e4dbd616a2ce893a1976c20a2321c5c0e66e78452fc32fd",
-				"small_map": "fb3ce27f1662b9ca7e4dbd616a2ce893a1976c20a2321c5c0e66e78452fc32fd",
-				"smoke_generated_map": "4d09f2dbd30b7f5b561e53e256e43840d45ef9d0e5d70607a4fad9e1f7ab6c22",
-				"smoke_nest_generated_map": "1ec4fdeda3ee1410b9609ba670822427f4962ee803ae95b7429fc272fbda9f3b"
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [
-				"default_generated_map",
-				"small_map"
-			],
-			"display_name": "turquoise_nest",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "turquoise_nest",
-			"kind": "nest",
-			"placement_surface": "floor",
-			"source_hashes": {
-				"default_generated_map": "bf0f9e01510d78141b4aeba5bdf3a6f58244dcb6ae7716c74a510982360a33b8",
-				"small_map": "bf0f9e01510d78141b4aeba5bdf3a6f58244dcb6ae7716c74a510982360a33b8"
+				"ancient_old_mine": "1268edf0f7568f44c42fdca8ccced72ecb22eae535cfcaa6bc1f12edb1e0bfb6"
 			}
 		},
 		{
@@ -707,7 +397,7 @@
 				1.72000002861023
 			],
 			"source_hashes": {
-				"furnishing_catalog": "3ebb2b9f33979b47546939433d647f6eb56f5760bc06a13da95cc8113981abf3"
+				"furnishing_catalog": "1879fc952e24b489d31b4cb9b90eab28e7db0483370db1a7e5e6f33fc49825bf"
 			}
 		},
 		{
@@ -730,7 +420,7 @@
 				0.839999973773956
 			],
 			"source_hashes": {
-				"furnishing_catalog": "08de8a1c761c89fba655610814b902281afadaf388d0c335dc2bae9bfbd19551"
+				"furnishing_catalog": "265ecb548df6fb842f053ad65215853be4407fcb94c6112d843078d979db8c2c"
 			}
 		},
 		{
@@ -758,7 +448,7 @@
 				0.920000016689301
 			],
 			"source_hashes": {
-				"furnishing_catalog": "ec91167fc1996a0348d03740c74f654186685189f40520e4f47c65fa216bfb75"
+				"furnishing_catalog": "3d827634d07bd129fda08df369ad391a6c78dcea8eba7d1ccc2cd273746246d8"
 			}
 		},
 		{
@@ -786,7 +476,7 @@
 				0.860000014305115
 			],
 			"source_hashes": {
-				"furnishing_catalog": "2fd80c1399e3c1ae990b0ba9b61c4130bf62a5e7290a8604a24b394cf881b2ba"
+				"furnishing_catalog": "e929fc5d636728f5067e496d578a7be9ef16f6b859eda13712375c0244a0a233"
 			}
 		},
 		{
@@ -822,7 +512,7 @@
 				0.819999992847443
 			],
 			"source_hashes": {
-				"furnishing_catalog": "bddb0c7da47be5de5a50b9d3813704932af18f5c9dc17b274df2e470138c8fb5"
+				"furnishing_catalog": "0d02a5e87d94b9f91ef5be8781c90bd3872eba74d62a9ca38b38743a47bde5af"
 			}
 		},
 		{
@@ -858,7 +548,7 @@
 				0.819999992847443
 			],
 			"source_hashes": {
-				"furnishing_catalog": "685c8c601653f7ea1a0e5c0b96eb946ba0e67528e1c66df8360924ce3f250221"
+				"furnishing_catalog": "022688a7248d0f7d31f5ea4f3530b66c119e04c0d762b245c78fa26d92192e09"
 			}
 		},
 		{
@@ -970,7 +660,7 @@
 			}
 		}
 	],
-	"generator": "DataPoiContentCapabilities",
+	"generator": "export_poi_content_capabilities_tool",
 	"population_limits": {
 		"active_nest_cap": 3,
 		"auto_initial_target_divisor": 200.0,

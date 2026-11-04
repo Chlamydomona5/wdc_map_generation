@@ -29,7 +29,7 @@
 
 房间允许非矩形地板、显式墙、未写入地形和开放侧；坐标使用 0–127 整数格，变换使用 0/90/180/270 度。房间保存到 `config/poi_rooms/`，组合保存到 `config/poi_compositions/`，地图 schema v3 通过 `layout_kind=authored_rooms` 和 `composition_id` 引用组合。上述 `config/` 均位于 `addons/wdc_map_generation/`。v1/v2 的旧矩形地图继续按原有语义运行。
 
-首批内容包括矿工聚落的围院/沿巷、精炼车间的直列/U 形，以及使用具名出生、奖励门和奖励装置锚点的总控金库。床铺、餐桌、公共炉灶、熔炉、工作台和物资木箱通过主仓正式实体表现。配置器只选择已接入的内容；能力快照来自主仓 `tools/export_poi_content_capabilities.gd`，不在工具里修改内容实现。
+首批内容包括矿工聚落的围院/沿巷、精炼车间的直列/U 形，以及使用具名出生、奖励门和奖励装置锚点的总控金库。床铺、餐桌、公共炉灶、熔炉、工作台和物资木箱通过主仓正式实体表现。配置器只选择已接入的内容；能力快照 `config/poi_capabilities/content_capabilities.json` 由主仓 `tools/export_poi_content_capabilities_tool.gd` 从主仓配置表与本目录四区域档案导出，不在工具里修改内容实现。
 
 单房和单 POI 验证只检查局部组装；区域数量、价值预算和人口上限须通过完整地图验证。BOSS 可编辑已存在的受约束奖励配方引用及具名锚点，不能创建任意运行脚本或奖励规则。正式战局在开局读取依赖快照，保存图纸不改变已经开始的战局。
 
@@ -37,9 +37,9 @@
 
 在“生成验证”页选择源地图和 POI 条目，使用当前组合及 seed 点击“生成 POI Only 测试地图”。工具生成一个真实 POI、外围出生区和撤离点，沿用所选条目的内容规则、预算及人口上限，不补充随机环境内容；结果可在整图预览中查看。
 
-点击“保存并启动正式测试”会重新验证当前配置，将 `poi_test_<composition_id>.json` 与相关图纸、组合一起保存，再打开已预选这张地图的正式主菜单。点击 Solo 或 Host 沿正常大厅流程进入战局。保存失败不会启动游戏；独立工具找不到 WDC 主仓时会显示原因，已保存配置仍可保留。
+点击“保存并启动正式测试”会重新验证当前配置，将 `poi_test_<composition_id>.json` 与相关图纸、组合一起保存（档案在 `config/generated_map_configs/`），再启动 WDC 主干正式入口（`scenes/app/main.tscn`），附带 `--map-profile=poi_test_<composition_id>` 与当前 `--map-seed`。从封面进入基地大厅后点击 Solo 或 Host，生成地图开局就使用这份档案。主干只从 `config/generated_map_configs/` 读取生成参数档案，保存后无需复制。保存失败不会启动游戏；找不到 WDC 主干（含 `scenes/app/main.tscn` 与 `map_generation/` 的上级目录）或档案不是四区域 / POI Only 布局时会显示原因，已保存配置仍可保留。
 
-项目附带 `poi_test_miners_settlement.json` 和 `poi_test_refining_workshop.json` 两份 seed 1 示例，分别继承古老矿区的矿工聚落与精炼车间内容条目，可直接从正式主菜单选图测试。
+项目附带 `poi_test_miners_settlement.json` 和 `poi_test_refining_workshop.json` 两份 seed 1 示例，分别继承古老矿区的矿工聚落与精炼车间内容条目，可用主干启动参数 `-- --map-profile=<文件名>` 测试。
 
 ## 验证
 

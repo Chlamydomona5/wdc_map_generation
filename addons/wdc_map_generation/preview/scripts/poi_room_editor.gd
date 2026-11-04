@@ -1366,7 +1366,7 @@ func _generate_poi_only_map() -> bool:
 	var dependency_hash: String = str(parsed.config.get_meta("poi_resource_bundle", {}).get("content_hash", ""))
 	_show_map_result(generated, generator.last_resolved_seed, source, dependency_hash, _poi_test_key, "POI Only 测试地图通过")
 	_validation_label.text += " 源条目 %s；内容规则 %s。" % [source_template, str(source.get("poi_only", {}).get("content_profile_id", ""))]
-	_set_status("已生成测试地图草稿 %s.json；可查看整图或保存后从正式主菜单开始测试" % filename)
+	_set_status("已生成测试地图草稿 %s.json；可查看整图或保存后从正式入口开始测试" % filename)
 	return true
 
 
@@ -1375,11 +1375,11 @@ func _save_and_launch_poi_only() -> void:
 		return
 	if not _save_project():
 		return
-	var launched: Dictionary = game_launcher.launch_saved_map_test(_poi_test_key.get_file())
+	var launched: Dictionary = game_launcher.launch_saved_map_test(_poi_test_key.get_file(), int(_seed_input.value))
 	if not bool(launched.get("ok", false)):
 		_set_status("测试地图已保存；启动失败：%s" % str(launched.get("error", "未知错误")))
 		return
-	_set_status("测试地图已保存，正式主菜单已预选 %s；点击 Solo 或 Host 开始测试" % _poi_test_key.get_file())
+	_set_status("测试地图已保存，正式入口已带上 %s；在大厅点 Solo 或 Host 开始测试" % _poi_test_key.get_file())
 
 
 func _begin_validation() -> void:
