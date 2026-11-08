@@ -1,6 +1,6 @@
 {
 	"cell_size_m": 1.0,
-	"content_hash": "4f91855d9a1e19e359965a9a9e26adab43613d21485dd0f1906cd9ff6ac8749f",
+	"content_hash": "1d44d51d518c4fc7b114f153ac2819184f1fc27152d87623c9e8f2704e01d77e",
 	"entries": [
 		{
 			"available": true,
@@ -166,7 +166,7 @@
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "burrower_worm",
+			"display_name": "潜地蠕虫",
 			"footprint_cells": [
 				[
 					0,
@@ -184,7 +184,7 @@
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "exploder",
+			"display_name": "爆裂怪",
 			"footprint_cells": [
 				[
 					0,
@@ -202,7 +202,7 @@
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "ghoul",
+			"display_name": "食尸鬼",
 			"footprint_cells": [
 				[
 					0,
@@ -210,42 +210,6 @@
 				]
 			],
 			"id": "ghoul",
-			"kind": "monster",
-			"placement_surface": "floor",
-			"source_hashes": {
-
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [],
-			"display_name": "guard",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "guard",
-			"kind": "monster",
-			"placement_surface": "floor",
-			"source_hashes": {
-
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [],
-			"display_name": "mimic_ore",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "mimic_ore",
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
@@ -274,7 +238,7 @@
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "skeleton_archer",
+			"display_name": "骷髅弓箭手",
 			"footprint_cells": [
 				[
 					0,
@@ -292,7 +256,7 @@
 			"available": true,
 			"clearance_cells": [],
 			"config_ids": [],
-			"display_name": "stone_golem",
+			"display_name": "岩心巨像",
 			"footprint_cells": [
 				[
 					0,
