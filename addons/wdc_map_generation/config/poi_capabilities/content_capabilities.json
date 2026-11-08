@@ -1,6 +1,6 @@
 {
 	"cell_size_m": 1.0,
-	"content_hash": "1d44d51d518c4fc7b114f153ac2819184f1fc27152d87623c9e8f2704e01d77e",
+	"content_hash": "cf838e0a8221b5bd64a156ed81cfc9b67dcf7a6069a59b5637047152ae19d970",
 	"entries": [
 		{
 			"available": true,
@@ -264,24 +264,6 @@
 				]
 			],
 			"id": "stone_golem",
-			"kind": "monster",
-			"placement_surface": "floor",
-			"source_hashes": {
-
-			}
-		},
-		{
-			"available": true,
-			"clearance_cells": [],
-			"config_ids": [],
-			"display_name": "stone_shard",
-			"footprint_cells": [
-				[
-					0,
-					0
-				]
-			],
-			"id": "stone_shard",
 			"kind": "monster",
 			"placement_surface": "floor",
 			"source_hashes": {
