@@ -18,8 +18,7 @@
     "height_cells": 128,
     "cell_size_m": 1.0,
     "seed": {
-      "mode": "fixed",
-      "fixed_value": 240513
+      "mode": "random"
     },
     "player_spawn": {
       "count": 1,
@@ -78,6 +77,28 @@
         "spawn_probability": 0.3,
         "require_stone": true,
         "weight": 1.0
+      },
+      {
+        "id": "turquoise_mineral",
+        "enabled": true,
+        "tile_type_id": "turquoise_ore",
+        "spawn_scope": "global_rare",
+        "min_cluster_size": 1,
+        "max_cluster_size": 2,
+        "spawn_probability": 0.15,
+        "require_stone": true,
+        "weight": 0.5
+      },
+      {
+        "id": "amethyst_mineral",
+        "enabled": true,
+        "tile_type_id": "amethyst_ore",
+        "spawn_scope": "global_rare",
+        "min_cluster_size": 1,
+        "max_cluster_size": 1,
+        "spawn_probability": 0.1,
+        "require_stone": true,
+        "weight": 0.25
       }
     ],
     "cluster_overrides": []
@@ -86,6 +107,13 @@
     "global": {
       "enabled": true,
       "debug_show_spawn_sites_by_default": true
+    },
+    "population_budgets": {
+      "ordinary_initial_target": 100,
+      "ordinary_live_cap": 100
+    },
+    "ordinary_distribution": {
+      "regular_region_share": 0.2
     },
     "ambient_isolated_sites": {
       "enabled": false,
@@ -109,9 +137,38 @@
       {
         "id": "skeleton_archer_single",
         "monster_id": "skeleton_archer"
+      },
+      {
+        "id": "exploder_single",
+        "monster_id": "exploder"
+      },
+      {
+        "id": "burrower_worm_single",
+        "monster_id": "burrower_worm"
       }
     ],
-    "nest_templates": []
+    "nest_templates": [
+      {
+        "id": "ghoul_nest",
+        "nest_unit_id": "ghoul_nest",
+        "monster_id": "ghoul",
+        "max_hit_points": 120,
+        "loot_table_id": "ghoul_nest_loot",
+        "activation_radius_m": 10.0,
+        "spawn_interval_sec": 8.0,
+        "max_alive_children": 3
+      },
+      {
+        "id": "amethyst_nest",
+        "nest_unit_id": "amethyst_nest",
+        "monster_id": "skeleton_archer",
+        "max_hit_points": 150,
+        "loot_table_id": "amethyst_nest_loot",
+        "activation_radius_m": 12.0,
+        "spawn_interval_sec": 10.0,
+        "max_alive_children": 2
+      }
+    ]
   },
   "traps": {
     "high_density_mode": false,
@@ -959,9 +1016,22 @@
         },
         "monster_sites": {
           "count_unit": "spawn_site",
-          "target_count": 0,
-          "minimum_count": 0,
-          "entries": []
+          "target_count": 4,
+          "minimum_count": 2,
+          "entries": [
+            {
+              "spawn_template_id": "ghoul_single",
+              "weight": 2.0
+            },
+            {
+              "spawn_template_id": "exploder_single",
+              "weight": 2.0
+            },
+            {
+              "spawn_template_id": "burrower_worm_single",
+              "weight": 1.5
+            }
+          ]
         },
         "nests": {
           "count_unit": "instance",
@@ -999,6 +1069,11 @@
               "cluster_type_id": "rare_mineral",
               "weight": 1.0,
               "value_cost": 2
+            },
+            {
+              "cluster_type_id": "turquoise_mineral",
+              "weight": 0.5,
+              "value_cost": 3
             }
           ]
         },
@@ -1057,14 +1132,23 @@
             {
               "spawn_template_id": "skeleton_archer_single",
               "weight": 1.0
+            },
+            {
+              "spawn_template_id": "exploder_single",
+              "weight": 1.0
             }
           ]
         },
         "nests": {
           "count_unit": "instance",
-          "target_count": 0,
+          "target_count": 1,
           "minimum_count": 0,
-          "entries": []
+          "entries": [
+            {
+              "nest_template_id": "ghoul_nest",
+              "weight": 1.0
+            }
+          ]
         },
         "camps": {
           "count_unit": "encounter",
@@ -1161,6 +1245,16 @@
               "cluster_type_id": "rare_mineral",
               "weight": 3.0,
               "value_cost": 4
+            },
+            {
+              "cluster_type_id": "turquoise_mineral",
+              "weight": 1.5,
+              "value_cost": 5
+            },
+            {
+              "cluster_type_id": "amethyst_mineral",
+              "weight": 0.5,
+              "value_cost": 8
             }
           ]
         },
@@ -1227,14 +1321,23 @@
             {
               "spawn_template_id": "skeleton_archer_single",
               "weight": 3.0
+            },
+            {
+              "spawn_template_id": "burrower_worm_single",
+              "weight": 1.0
             }
           ]
         },
         "nests": {
           "count_unit": "instance",
-          "target_count": 0,
+          "target_count": 1,
           "minimum_count": 0,
-          "entries": []
+          "entries": [
+            {
+              "nest_template_id": "amethyst_nest",
+              "weight": 1.0
+            }
+          ]
         },
         "camps": {
           "count_unit": "encounter",

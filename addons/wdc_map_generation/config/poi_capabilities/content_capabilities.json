@@ -1,6 +1,6 @@
 {
 	"cell_size_m": 1.0,
-	"content_hash": "cf838e0a8221b5bd64a156ed81cfc9b67dcf7a6069a59b5637047152ae19d970",
+	"content_hash": "913dbaf607466fbab0afd5f169e08176bf37a630daff7d2b906686261a1e899a",
 	"entries": [
 		{
 			"available": true,
@@ -128,6 +128,26 @@
 			"config_ids": [
 				"ancient_old_mine"
 			],
+			"display_name": "amethyst_mineral",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "amethyst_mineral",
+			"kind": "mineral",
+			"placement_surface": "wall",
+			"source_hashes": {
+				"ancient_old_mine": "bd29594e5692a4c4257e9d63fd619039be99406db394ce8abd4b0282cb69d708"
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [
+				"ancient_old_mine"
+			],
 			"display_name": "common_mineral",
 			"footprint_cells": [
 				[
@@ -160,6 +180,26 @@
 			"placement_surface": "wall",
 			"source_hashes": {
 				"ancient_old_mine": "f39abca9b243128532d1044b597ad1620bfdfb2adfb765c5e970da23433b1f84"
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [
+				"ancient_old_mine"
+			],
+			"display_name": "turquoise_mineral",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "turquoise_mineral",
+			"kind": "mineral",
+			"placement_surface": "wall",
+			"source_hashes": {
+				"ancient_old_mine": "5fde68f6cb2289015c0428de650f8eeb16ad1d5d2ef4a6154a580d906eae9667"
 			}
 		},
 		{
@@ -276,6 +316,46 @@
 			"config_ids": [
 				"ancient_old_mine"
 			],
+			"display_name": "burrower_worm_single",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "burrower_worm_single",
+			"kind": "monster_pack",
+			"placement_surface": "floor",
+			"source_hashes": {
+				"ancient_old_mine": "428d980a8d9c3d4cddf264c9f54f51c73967a45cc31867e006d6c755f4a3d1bb"
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [
+				"ancient_old_mine"
+			],
+			"display_name": "exploder_single",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "exploder_single",
+			"kind": "monster_pack",
+			"placement_surface": "floor",
+			"source_hashes": {
+				"ancient_old_mine": "f146afec0cda8025a4d97e75b4959e96690ddfb939fbe82b95cbce44fcc89493"
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [
+				"ancient_old_mine"
+			],
 			"display_name": "ghoul_single",
 			"footprint_cells": [
 				[
@@ -308,6 +388,46 @@
 			"placement_surface": "floor",
 			"source_hashes": {
 				"ancient_old_mine": "1268edf0f7568f44c42fdca8ccced72ecb22eae535cfcaa6bc1f12edb1e0bfb6"
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [
+				"ancient_old_mine"
+			],
+			"display_name": "amethyst_nest",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "amethyst_nest",
+			"kind": "nest",
+			"placement_surface": "floor",
+			"source_hashes": {
+				"ancient_old_mine": "f41d2cbafcf646aa6cc3aa77fd8367064ecd89514dc58fd4fe85f6aa757f52e7"
+			}
+		},
+		{
+			"available": true,
+			"clearance_cells": [],
+			"config_ids": [
+				"ancient_old_mine"
+			],
+			"display_name": "ghoul_nest",
+			"footprint_cells": [
+				[
+					0,
+					0
+				]
+			],
+			"id": "ghoul_nest",
+			"kind": "nest",
+			"placement_surface": "floor",
+			"source_hashes": {
+				"ancient_old_mine": "42ace6ae2a92c943a39be8cd5294e6deace1875aae019de1ff2c31e3a92e15b0"
 			}
 		},
 		{
